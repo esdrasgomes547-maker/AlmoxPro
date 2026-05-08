@@ -1,0 +1,136 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Employee definition",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "age": { "type": "number" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE", "ON_LEAVE"] },
+        "equipment": { 
+          "type": "array", 
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "type": { "type": "string" }
+            }
+          }
+        },
+        "requests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "item": { "type": "string" },
+              "status": { "type": "string" },
+              "date": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["name", "role", "age", "status"]
+    },
+    "InventoryItem": {
+      "title": "Inventory Item",
+      "description": "Inventory Item",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "location": { "type": "string" },
+        "qty": { "type": "number" },
+        "minQty": { "type": "number" },
+        "status": { "type": "string", "enum": ["OK", "WARNING", "CRITICAL", "OUT_OF_STOCK"] },
+        "price": { "type": "number" }
+      },
+      "required": ["name", "category", "location", "qty", "minQty", "status", "price"]
+    },
+    "Shipment": {
+      "title": "Shipment",
+      "description": "Shipment",
+      "type": "object",
+      "properties": {
+        "destination": { "type": "string" },
+        "items": { "type": "number" },
+        "status": { "type": "string" },
+        "driver": { "type": "string" },
+        "vehicle": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["destination", "items", "status", "driver", "vehicle", "date"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Supplier",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "rating": { "type": "number" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["name", "category", "rating", "phone", "email", "status"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Company Settings",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "cnpj": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "lowStockAlerts": { "type": "boolean" },
+        "shipmentUpdates": { "type": "boolean" },
+        "dailyEmail": { "type": "boolean" }
+      }
+    },
+    "Movement": {
+      "title": "Inventory Movement",
+      "description": "A movement of an inventory item",
+      "type": "object",
+      "properties": {
+        "type": { "type": "string", "enum": ["IN", "OUT"] },
+        "qty": { "type": "number" },
+        "reason": { "type": "string" },
+        "date": { "type": "string" },
+        "user": { "type": "string" },
+        "userEmail": { "type": "string" }
+      },
+      "required": ["type", "qty", "reason", "date", "user", "userEmail"]
+    }
+  },
+  "firestore": {
+    "/organizations/{orgId}/inventory/{itemId}": {
+      "schema": { "$ref": "#/entities/InventoryItem" },
+      "description": "Tenant Inventory Items Collection"
+    },
+    "/organizations/{orgId}/inventory/{itemId}/movements/{movementId}": {
+      "schema": { "$ref": "#/entities/Movement" },
+      "description": "Inventory item movements"
+    },
+    "/organizations/{orgId}/shipments/{shipmentId}": {
+      "schema": { "$ref": "#/entities/Shipment" },
+      "description": "Tenant Shipments Collection"
+    },
+    "/organizations/{orgId}/suppliers/{supplierId}": {
+      "schema": { "$ref": "#/entities/Supplier" },
+      "description": "Tenant Suppliers Collection"
+    },
+    "/organizations/{orgId}/settings/{settingsId}": {
+      "schema": { "$ref": "#/entities/Settings" },
+      "description": "Tenant Settings Collection"
+    },
+    "/users/{uid}": {
+      "schema": "object",
+      "description": "User profiles including orgId and role"
+    }
+  }
+}

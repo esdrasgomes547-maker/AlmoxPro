@@ -1,0 +1,130 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    function isMaster() { 
+      return isSignedIn() && (
+        request.auth.token.email == 'esdrasgomes547@gmail.com' ||
+        (request.auth.token.email_verified == true && exists(/databases/$(database)/documents/masters/$(request.auth.token.email)))
+      );
+    }
+    
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    
+    function isOrgMember(orgId) {
+      return orgId == 'demo-org' || (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId == orgId);
+    }
+
+    function isPremium() {
+      return isSignedIn() && (getUserData().role == 'premium_max' || isMaster());
+    }
+
+    // --- Validation Helpers ---
+    
+    function isValidInventoryItem(data) {
+      return data.keys().hasAll(['name', 'category', 'location', 'qty', 'minQty', 'status', 'price']) &&
+             data.keys().size() == 7 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.category is string && data.category.size() <= 50 &&
+             data.location is string && data.location.size() <= 50 &&
+             data.qty is number &&
+             data.minQty is number &&
+             data.status in ["OK", "WARNING", "CRITICAL", "OUT_OF_STOCK"] &&
+             data.price is number;
+    }
+
+    function isValidShipment(data) {
+      return data.keys().hasAll(['destination', 'items', 'status', 'driver', 'vehicle', 'date']) &&
+             data.keys().size() == 6 &&
+             data.destination is string && data.destination.size() <= 200 &&
+             data.items is number &&
+             data.status is string && data.status.size() <= 50 &&
+             data.driver is string && data.driver.size() <= 100 &&
+             data.vehicle is string && data.vehicle.size() <= 100 &&
+             data.date is string;
+    }
+
+    function isValidSupplier(data) {
+      return data.keys().hasAll(['name', 'category', 'rating', 'phone', 'email', 'status']) &&
+             data.keys().size() == 6 &&
+             data.name is string && data.name.size() <= 100 &&
+             data.category is string && data.category.size() <= 50 &&
+             data.rating is number &&
+             data.phone is string && data.phone.size() <= 20 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.status is string && data.status.size() <= 50;
+    }
+
+    // --- Rules ---
+
+    match /users/{uid} {
+      allow read: if isMaster() || (isSignedIn() && request.auth.uid == uid);
+      allow create: if (isSignedIn() && request.auth.uid == uid && 
+                       incoming().keys().hasAll(['orgId', 'role', 'plan', 'email']) &&
+                       incoming().role != 'admin') || isMaster();
+      allow update: if isMaster() || (isSignedIn() && request.auth.uid == uid && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['orgId', 'email']));
+    }
+
+    match /masters/{email} {
+      allow read: if isMaster();
+      allow write: if isMaster();
+    }
+
+    match /organizations/{orgId} {
+      allow read: if isMaster() || isOrgMember(orgId);
+      allow write: if isMaster();
+    }
+
+    // Inventory
+    match /organizations/{orgId}/inventory/{itemId} {
+      allow read: if isMaster() || isOrgMember(orgId);
+      allow create: if (isMaster() || isOrgMember(orgId)) && isValidInventoryItem(incoming());
+      allow update: if (isMaster() || isOrgMember(orgId)) && 
+                      isValidInventoryItem(incoming()) &&
+                      (incoming().diff(existing()).affectedKeys().hasAny(['qty', 'status', 'location', 'minQty', 'price', 'name', 'category']));
+      allow delete: if isMaster() || isOrgMember(orgId);
+    }
+
+    // Shipments
+    match /organizations/{orgId}/shipments/{shipmentId} {
+      allow read: if isMaster() || isOrgMember(orgId);
+      allow create: if (isMaster() || isOrgMember(orgId)) && isValidShipment(incoming());
+      allow update: if (isMaster() || isOrgMember(orgId)) && 
+                      isValidShipment(incoming()) &&
+                      (incoming().diff(existing()).affectedKeys().hasAny(['status', 'driver', 'vehicle', 'date', 'items', 'destination']));
+      allow delete: if isMaster() || isOrgMember(orgId);
+    }
+
+    // Suppliers
+    match /organizations/{orgId}/suppliers/{supplierId} {
+      allow read: if isMaster() || isOrgMember(orgId);
+      allow create: if (isMaster() || isOrgMember(orgId)) && isValidSupplier(incoming());
+      allow update: if (isMaster() || isOrgMember(orgId)) && isValidId(supplierId) && isValidSupplier(incoming());
+      allow delete: if isMaster() || isOrgMember(orgId);
+    }
+
+    // Settings
+    match /organizations/{orgId}/settings/{settingsId} {
+      allow read: if isMaster() || isOrgMember(orgId);
+      allow write: if isMaster() || isOrgMember(orgId);
+    }
+  }
+}
