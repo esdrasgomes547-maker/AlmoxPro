@@ -4,14 +4,15 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Package, Truck, AlertTriangle, ArrowUpRight, ArrowDownRight, PackageCheck, ChevronRight } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
-import { collection, onSnapshot, query, doc } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, limit, orderBy } from "firebase/firestore";
 import { useOrganization } from "../lib/tenant";
+import { InventoryItem, ShipmentItem, CompanySettings } from "../types";
 
 export function Dashboard() {
   const { orgId } = useOrganization();
-  const [inventory, setInventory] = useState<any[]>([]);
-  const [shipments, setShipments] = useState<any[]>([]);
-  const [companySettings, setCompanySettings] = useState<any>(null);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [shipments, setShipments] = useState<ShipmentItem[]>([]);
+  const [companySettings, setCompanySettings] = useState<CompanySettings | null>(null);
 
   // Personalized Greeting
   const displayName = auth.currentUser?.displayName || auth.currentUser?.email?.split('@')[0] || "Visitante";
@@ -46,15 +47,15 @@ export function Dashboard() {
     if (!orgId) return;
 
     const unsubSettings = onSnapshot(doc(db, `organizations/${orgId}/settings`, "default"), snap => {
-      if (snap.exists()) setCompanySettings(snap.data());
+      if (snap.exists()) setCompanySettings(snap.data() as CompanySettings);
     });
 
-    const unsubInv = onSnapshot(query(collection(db, `organizations/${orgId}/inventory`)), snap => {
-      setInventory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsubInv = onSnapshot(query(collection(db, `organizations/${orgId}/inventory`), limit(1000)), snap => {
+      setInventory(snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem)));
     }, err => handleFirestoreError(err, OperationType.LIST, `organizations/${orgId}/inventory`));
 
-    const unsubShip = onSnapshot(query(collection(db, `organizations/${orgId}/shipments`)), snap => {
-      setShipments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    const unsubShip = onSnapshot(query(collection(db, `organizations/${orgId}/shipments`), orderBy('date', 'desc'), limit(1000)), snap => {
+      setShipments(snap.docs.map(d => ({ id: d.id, ...d.data() } as ShipmentItem)));
     }, err => handleFirestoreError(err, OperationType.LIST, `organizations/${orgId}/shipments`));
 
     return () => {

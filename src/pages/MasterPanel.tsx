@@ -1,23 +1,24 @@
 import React, { useEffect, useState } from 'react';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { collection, onSnapshot, query, orderBy, doc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, setDoc } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Search, ShieldAlert, CreditCard, Activity, Play, Eye } from 'lucide-react';
+import { Organization } from '../types';
 
 export function MasterPanel() {
-  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isAddMasterModalOpen, setIsAddMasterModalOpen] = useState(false);
   const [newMasterEmail, setNewMasterEmail] = useState('');
   
   useEffect(() => {
-    // Escuta Organizations
-    const qOrg = query(collection(db, "organizations"), orderBy("createdAt", "desc"));
+    // Escuta Organizations - Limiting to prevent memory leak on massive databases
+    const qOrg = query(collection(db, "organizations"), orderBy("createdAt", "desc"), limit(2000));
     const unsubOrg = onSnapshot(qOrg, (snap) => {
-      setOrganizations(snap.docs.map(d => ({ orgId: d.id, ...d.data() })));
+      setOrganizations(snap.docs.map(d => ({ orgId: d.id, ...d.data() } as Organization)));
     }, (error) => handleFirestoreError(error, OperationType.LIST, "organizations"));
 
     return () => {

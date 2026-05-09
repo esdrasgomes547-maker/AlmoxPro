@@ -5,25 +5,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Search, Plus, Filter, Download, ArrowUpRight, ArrowDownRight, PackageCheck, Send, CheckCircle2, Clock, X, Trash2, Edit2, Mail, Phone } from "lucide-react";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { collection, onSnapshot, query, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, setDoc, deleteDoc, orderBy, limit } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateShipmentsReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
-
-const initialShipments: any[] = [];
+import { ShipmentItem } from "../types";
 
 export function Shipments() {
   const { orgId } = useOrganization();
   const [searchTerm, setSearchTerm] = useState("");
-  const [shipments, setShipments] = useState<any[]>([]);
+  const [shipments, setShipments] = useState<ShipmentItem[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [newShipmentForm, setNewShipmentForm] = useState({ destination: "", items: 1, driver: "", vehicle: "", status: "PENDING" });
+  const [newShipmentForm, setNewShipmentForm] = useState({ destination: "", items: 1, driver: "", vehicle: "", status: "PENDING" as ShipmentItem["status"] });
 
   useEffect(() => {
     if (!orgId) return;
-    const q = query(collection(db, `organizations/${orgId}/shipments`));
+    const q = query(
+      collection(db, `organizations/${orgId}/shipments`), 
+      orderBy("date", "desc"), 
+      limit(2000)
+    );
     const unsub = onSnapshot(q, (snap) => {
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ShipmentItem));
       setShipments(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `organizations/${orgId}/shipments`);

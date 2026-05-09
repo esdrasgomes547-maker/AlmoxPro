@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,27 +7,33 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database } from "lucide-react";
 import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
-import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateInventoryReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
+import { InventoryItem, MovementItem } from "../types";
 
 export function Inventory() {
   const { orgId } = useOrganization();
   const [searchParams] = useSearchParams();
-  const [inventory, setInventory] = useState<any[]>([]);
+  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
-  const [selectedProduct, setSelectedProduct] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]);
-  const [newMovement, setNewMovement] = useState({ type: "IN", qty: 0, reason: "" });
+  const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
+  const [history, setHistory] = useState<MovementItem[]>([]);
+  const [newMovement, setNewMovement] = useState({ type: "IN" as "IN" | "OUT", qty: 0, reason: "" });
 
   useEffect(() => {
     if (!selectedProduct || !orgId) {
       setHistory([]);
       return;
     }
-    const q = query(collection(db, `organizations/${orgId}/inventory/${selectedProduct.id}/movements`));
+    // Optimizing massive database: Adding limit and orderBy
+    const q = query(
+      collection(db, `organizations/${orgId}/inventory/${selectedProduct.id}/movements`),
+      orderBy("date", "desc"),
+      limit(500)
+    );
     const unsub = onSnapshot(q, (snap) => {
-      const h = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const h = snap.docs.map(d => ({ id: d.id, ...d.data() } as MovementItem));
       setHistory(h);
     }, (err) => handleFirestoreError(err, OperationType.LIST, `organizations/${orgId}/inventory/${selectedProduct.id}/movements`));
     return () => unsub();
@@ -35,9 +41,10 @@ export function Inventory() {
 
   useEffect(() => {
     if (!orgId) return;
-    const q = query(collection(db, `organizations/${orgId}/inventory`));
+    // Optimizing massive database: Limit the total loaded items if the database grows massively
+    const q = query(collection(db, `organizations/${orgId}/inventory`), limit(1000));
     const unsub = onSnapshot(q, (snap) => {
-      const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem));
       setInventory(items);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `organizations/${orgId}/inventory`);
@@ -249,9 +256,18 @@ export function Inventory() {
     }
   };
 
-  const sortedHistory = React.useMemo(() => {
-    return [...history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [history]);
+  const itemsPerPage = 8;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.ceil(history.length / itemsPerPage);
+  const paginatedHistory = useMemo(() => {
+    const start = (currentPage - 1) * itemsPerPage;
+    return history.slice(start, start + itemsPerPage);
+  }, [history, currentPage]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedProduct]);
 
   const allSelected = filteredData.length > 0 && selectedItems.length === filteredData.length;
   const isIndeterminate = selectedItems.length > 0 && selectedItems.length < filteredData.length;
@@ -580,55 +596,90 @@ export function Inventory() {
                  </Button>
                 </div>
               </div>
-              <div className="w-full lg:flex-1 overflow-auto max-h-[500px]">
-                <Table>
-                  <TableHeader className="sticky top-0 bg-[hsl(var(--card))] z-10 shadow-sm">
-                    <TableRow>
-                      <TableHead className="w-[120px]">Data</TableHead>
-                      <TableHead>Operação</TableHead>
-                      <TableHead>Motivo</TableHead>
-                      <TableHead className="text-right">Qtd.</TableHead>
-                      <TableHead>Usuário</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {sortedHistory.map((mov) => (
-                      <TableRow key={mov.id}>
-                        <TableCell className="text-xs text-[hsl(var(--muted-foreground))]">
-                          {new Date(mov.date).toLocaleDateString('pt-BR')} <br className="hidden sm:block" />
-                          <span className="hidden sm:inline">{new Date(mov.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit'})}</span>
-                        </TableCell>
-                        <TableCell>
-                          {mov.type === 'IN' ? (
-                            <div className="flex items-center text-emerald-600 font-medium text-xs sm:text-sm">
-                              <ArrowDownRight className="h-4 w-4 mr-1" /> Entrada
-                            </div>
-                          ) : (
-                            <div className="flex items-center text-amber-600 font-medium text-xs sm:text-sm">
-                              <ArrowUpRight className="h-4 w-4 mr-1" /> Saída
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-[hsl(var(--muted-foreground))] text-sm max-w-[150px] truncate" title={mov.reason}>
-                          {mov.reason}
-                        </TableCell>
-                        <TableCell className="text-right font-mono font-medium">
-                          {mov.type === 'IN' ? '+' : '-'}{mov.qty}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {mov.user}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                    {history.length === 0 && (
+              <div className="w-full lg:flex-1 flex flex-col min-h-[400px]">
+                <div className="flex-1">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center">
-                          Nenhuma movimentação para este produto.
-                        </TableCell>
+                        <TableHead className="w-[120px]">Data</TableHead>
+                        <TableHead>Op.</TableHead>
+                        <TableHead>Motivo</TableHead>
+                        <TableHead className="text-right">Qtd.</TableHead>
+                        <TableHead className="text-right">Usuário</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {paginatedHistory.map((mov) => (
+                        <TableRow key={mov.id}>
+                          <TableCell className="text-xs text-[hsl(var(--muted-foreground))]">
+                            <div className="font-medium">{new Date(mov.date).toLocaleDateString('pt-BR')}</div>
+                            <div className="text-[10px] opacity-70">{new Date(mov.date).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit'})}</div>
+                          </TableCell>
+                          <TableCell>
+                            {mov.type === 'IN' ? (
+                              <div className="flex items-center text-emerald-600 font-medium text-xs">
+                                <ArrowDownRight className="h-4 w-4 mr-1" /> Entrada
+                              </div>
+                            ) : (
+                              <div className="flex items-center text-amber-600 font-medium text-xs">
+                                <ArrowUpRight className="h-4 w-4 mr-1" /> Saída
+                              </div>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-[hsl(var(--muted-foreground))] text-sm max-w-[150px] truncate" title={mov.reason}>
+                            {mov.reason}
+                          </TableCell>
+                          <TableCell className="text-right font-mono font-medium">
+                            <span className={mov.type === 'IN' ? 'text-emerald-600' : 'text-amber-600'}>
+                              {mov.type === 'IN' ? '+' : '-'}{mov.qty}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-right text-xs text-[hsl(var(--muted-foreground))]">
+                            {mov.user.split(' ')[0]}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      {paginatedHistory.length === 0 && (
+                        <TableRow>
+                          <TableCell colSpan={5} className="h-32 text-center text-[hsl(var(--muted-foreground))]">
+                            <History className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                            Nenhuma movimentação registrada.
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+
+                {totalPages > 1 && (
+                  <div className="p-4 border-t border-[hsl(var(--border))] flex items-center justify-between bg-[hsl(var(--muted))]/10 shrink-0">
+                    <div className="text-xs text-[hsl(var(--muted-foreground))]">
+                      Página <span className="font-medium text-[hsl(var(--foreground))]">{currentPage}</span> de <span className="font-medium text-[hsl(var(--foreground))]">{totalPages}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === 1}
+                        onClick={() => setCurrentPage(prev => prev - 1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <span className="sr-only">Anterior</span>
+                        <ArrowDownRight className="h-4 w-4 rotate-90" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === totalPages}
+                        onClick={() => setCurrentPage(prev => prev + 1)}
+                        className="h-8 w-8 p-0"
+                      >
+                        <span className="sr-only">Próxima</span>
+                        <ArrowDownRight className="h-4 w-4 -rotate-90" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
