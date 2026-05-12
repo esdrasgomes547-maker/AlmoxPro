@@ -5,13 +5,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database, FileText, Calculator } from "lucide-react";
+import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database, FileText, Calculator, BarChart3 } from "lucide-react";
 import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateInventoryReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
 import { InventoryItem, MovementItem } from "../types";
-import { normalizeSearch, formatBRL, preciseMultiply, preciseSum, exportInventoryCSV, generateInventoryPDF } from "../lib/exportService";
+import { normalizeSearch, formatBRL, preciseMultiply, preciseSum, exportInventoryCSV, generateInventoryPDF, generateCategoryReportPDF } from "../lib/exportService";
 import { BudgetSimulator } from "../components/BudgetSimulator";
 
 export function Inventory() {
@@ -309,6 +309,10 @@ export function Inventory() {
           <Button variant="outline" size="sm" onClick={() => generateInventoryPDF(inventory)}>
             <FileText className="h-4 w-4 mr-2" />
             PDF
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => generateCategoryReportPDF(inventory)} className="hidden sm:flex">
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Por Categoria
           </Button>
           <Button variant="outline" size="sm" onClick={() => exportInventoryCSV(inventory)}>
             <Download className="h-4 w-4 mr-2" />
