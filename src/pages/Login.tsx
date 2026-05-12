@@ -156,7 +156,7 @@ export function Login() {
                 type="text"
                 required
                 className="block w-full pl-10 pr-3 py-2 border border-[hsl(var(--border))] rounded-lg bg-[hsl(var(--background))] text-[hsl(var(--foreground))] placeholder-[hsl(var(--muted-foreground))] focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))] focus:border-transparent transition"
-                placeholder={isRegistering ? "Seu melhor e-mail" : "E-mail ou Login Mestre"}
+                placeholder={isRegistering ? "Seu melhor e-mail" : "E-mail"}
                 value={formData.login}
                 onChange={(e) => setFormData({ ...formData, login: e.target.value })}
               />
