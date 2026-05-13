@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
-import { LayoutDashboard, Package, Truck, Users, Settings, Bell, Search, Menu, ChevronLeft, ChevronRight, Moon, Sun, LogOut, ShieldAlert } from "lucide-react";
+import { LayoutDashboard, Package, Truck, Users, Settings, Search, Menu, ChevronLeft, ChevronRight, Moon, Sun, LogOut, ShieldAlert, FileBarChart, Calculator } from "lucide-react";
 import { useTheme } from "../ThemeProvider";
 import { TecgasLogo } from "../TecgasLogo";
 import { auth, db } from "@/lib/firebase";
@@ -45,6 +45,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: "Estoque", path: "/app/inventory", icon: Package },
     { name: "Expedição", path: "/app/shipments", icon: Truck },
     { name: "Fornecedores", path: "/app/suppliers", icon: Users },
+    { name: "Relatórios", path: "/app/reports", icon: FileBarChart },
+    { name: "Simulação", path: "/app/simulation", icon: Calculator },
     { name: "Configurações", path: "/app/settings", icon: Settings },
   ];
 
@@ -187,10 +189,6 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             </button>
             <button className="sm:hidden relative p-2 rounded-full hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))]">
               <Search className="h-5 w-5" />
-            </button>
-            <button className="relative p-2 rounded-full hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))]">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1.5 right-2 h-2 w-2 rounded-full bg-[hsl(var(--destructive))] border-2 border-[hsl(var(--card))]"></span>
             </button>
           </div>
         </header>
