@@ -1,12 +1,11 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Filter, Download, Star, Phone, Mail, X, Trash2, Edit2 } from "lucide-react";
+import { Search, Plus, Mail, Phone, X, Trash2 } from "lucide-react";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
-import { sendWhatsAppNotification, sendEmailReport, generateSuppliersReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
 
 const initialSuppliers: any[] = [];
@@ -18,6 +17,9 @@ export function Suppliers() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newSupplierForm, setNewSupplierForm] = useState({ name: "", category: "Conexões", phone: "", email: "" });
+
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [supplierToDelete, setSupplierToDelete] = useState<{ id: string, name: string } | null>(null);
 
   useEffect(() => {
     if (!orgId) return;
@@ -39,16 +41,6 @@ export function Suppliers() {
     );
   }, [suppliers, searchTerm]);
 
-  const handleEdit = (item: any) => {
-    setEditingId(item.id);
-    setNewSupplierForm({
-      name: item.name,
-      category: item.category,
-      phone: item.phone || "",
-      email: item.email || ""
-    });
-    setIsAddModalOpen(true);
-  };
 
   const handleSaveSupplier = async () => {
     if (!orgId) return;
@@ -73,25 +65,22 @@ export function Suppliers() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if(!orgId) return;
-    if(window.confirm("Deseja apagar este fornecedor?")) {
-      try {
-        await deleteDoc(doc(db, `organizations/${orgId}/suppliers`, id));
-      } catch (error) {
-        handleFirestoreError(error, OperationType.DELETE, `organizations/${orgId}/suppliers/${id}`);
-      }
+  const handleDelete = (id: string, name: string) => {
+    setSupplierToDelete({ id, name });
+    setIsDeleteModalOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if(!orgId || !supplierToDelete) return;
+    try {
+      await deleteDoc(doc(db, `organizations/${orgId}/suppliers`, supplierToDelete.id));
+      setIsDeleteModalOpen(false);
+      setSupplierToDelete(null);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `organizations/${orgId}/suppliers/${supplierToDelete.id}`);
     }
   };
 
-  const getStatusBadge = (status: string) => {
-    switch(status) {
-      case 'ACTIVE': return <Badge variant="success">Ativo</Badge>;
-      case 'INACTIVE': return <Badge variant="secondary">Inativo</Badge>;
-      case 'REVIEW_NEEDED': return <Badge variant="outline" className="text-amber-600 border-amber-500/30 bg-amber-500/10">Em Revisão</Badge>;
-      default: return <Badge variant="outline">{status}</Badge>;
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -101,113 +90,86 @@ export function Suppliers() {
           <p className="text-sm text-[hsl(var(--muted-foreground))]">Gerencie seus contatos e avaliações de fornecedores.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => {
-            const report = generateSuppliersReport(suppliers);
-            sendEmailReport("", "Relatório de Fornecedores - TECGAS", report);
-          }}>
-            <Mail className="h-4 w-4 mr-2" />
-            Email
-          </Button>
-          <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => {
-            const report = generateSuppliersReport(suppliers);
-            sendWhatsAppNotification("", report);
-          }}>
-            <Phone className="h-4 w-4 mr-2" />
-            WhatsApp
-          </Button>
           <Button size="sm" onClick={() => setIsAddModalOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
             Novo Fornecedor
           </Button>
         </div>
       </div>
+      
+      <div className="flex flex-1 items-center space-x-2 w-full max-w-sm relative">
+        <Search className="h-4 w-4 absolute left-3 text-[hsl(var(--muted-foreground))]" />
+        <input 
+          type="text" 
+          placeholder="Buscar por nome ou categoria..." 
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full h-10 pl-9 pr-4 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))]"
+        />
+      </div>
 
-      <Card>
-        <CardHeader className="p-4 pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-1 items-center space-x-2 w-full max-w-sm relative">
-            <Search className="h-4 w-4 absolute left-3 text-[hsl(var(--muted-foreground))]" />
-            <input 
-              type="text" 
-              placeholder="Buscar por nome ou categoria..." 
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-9 pl-9 pr-4 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))]"
-            />
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {filteredData.map((item) => (
+          <Card key={item.id} className="flex flex-col">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-lg">{item.name}</CardTitle>
+              <Badge variant="secondary" className="w-fit">{item.category}</Badge>
+            </CardHeader>
+            <CardContent className="flex-1 space-y-3">
+              <div className="text-sm text-[hsl(var(--muted-foreground))]">
+                <p>Telefone: {item.phone || 'Não informado'}</p>
+                <p>Email: {item.email || 'Não informado'}</p>
+              </div>
+              <div className="flex items-center gap-2 pt-2">
+                {item.phone && (
+                  <a 
+                    href={`https://wa.me/${item.phone.replace(/\D/g, '')}`} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className={cn(
+                      "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-[hsl(var(--border))] bg-[hsl(var(--background))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] h-9 px-3 flex-1"
+                    )}
+                  >
+                    WhatsApp
+                  </a>
+                )}
+                {item.email && (
+                  <a 
+                    href={`mailto:${item.email}`}
+                    className={cn(
+                      "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors border border-[hsl(var(--border))] bg-[hsl(var(--background))] hover:bg-[hsl(var(--accent))] hover:text-[hsl(var(--accent-foreground))] h-9 px-3 flex-1"
+                    )}
+                  >
+                    Email
+                  </a>
+                )}
+                <Button variant="ghost" size="sm" className="text-destructive h-9 w-9 p-0" onClick={() => handleDelete(item.id, item.name)}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+        {filteredData.length === 0 && (
+          <div className="col-span-full h-24 flex items-center justify-center text-[hsl(var(--muted-foreground))]">
+            Nenhum fornecedor encontrado.
           </div>
-          <Button variant="outline" size="sm" className="hidden sm:flex shrink-0">
-            <Filter className="h-4 w-4 mr-2" />
-            Filtros
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0 mt-4 overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Fornecedor</TableHead>
-                <TableHead className="hidden md:table-cell">Categoria</TableHead>
-                <TableHead className="hidden lg:table-cell">Contato</TableHead>
-                <TableHead>Avaliação</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredData.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">
-                    <div className="truncate max-w-[200px]">{item.name}</div>
-                    <div className="text-xs font-mono text-[hsl(var(--muted-foreground))]">{item.id}</div>
-                  </TableCell>
-                  <TableCell className="hidden md:table-cell text-sm">{item.category}</TableCell>
-                  <TableCell className="hidden lg:table-cell text-sm">
-                    <div className="flex items-center gap-1"><Phone className="h-3 w-3 text-[hsl(var(--muted-foreground))]" /> {item.phone}</div>
-                    <div className="flex items-center gap-1 text-[hsl(var(--muted-foreground))]"><Mail className="h-3 w-3" /> <a href={`mailto:${item.email}`} className="hover:underline">{item.email}</a></div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center">
-                      <Star className="h-4 w-4 text-amber-400 fill-amber-400 mr-1" />
-                      <span className="font-medium text-sm">{item.rating.toFixed(1)}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {getStatusBadge(item.status)}
-                  </TableCell>
-                  <TableCell className="text-right flex items-center justify-end space-x-1">
-                    <Button variant="ghost" size="sm" className="h-8 text-[hsl(var(--primary))] hover:text-[hsl(var(--primary))]" onClick={() => handleEdit(item)}>
-                      <Edit2 className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 text-destructive hover:text-destructive" onClick={() => handleDelete(item.id)}>
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              
-              {filteredData.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={6} className="h-24 text-center">
-                    Nenhum fornecedor encontrado.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
       {/* Add Supplier Modal */}
       {isAddModalOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <Card className="w-full max-w-md shadow-xl">
             <CardHeader className="flex flex-row items-center justify-between border-b border-[hsl(var(--border))] px-6 py-4">
-              <CardTitle className="text-xl">{editingId ? 'Editar Fornecedor' : 'Novo Fornecedor'}</CardTitle>
+              <CardTitle className="text-xl">Novo Fornecedor</CardTitle>
               <button className="p-2 rounded-full hover:bg-[hsl(var(--accent))] transition-colors" onClick={() => setIsAddModalOpen(false)}>
                 <X className="h-5 w-5 text-[hsl(var(--muted-foreground))]" />
               </button>
             </CardHeader>
             <CardContent className="p-6 space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Nome do Fornecedor</label>
+                <label className="text-sm font-medium">Nome Completo</label>
                 <input 
                   type="text" 
                   className="w-full h-10 px-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))] outline-none transition-all"
@@ -233,7 +195,7 @@ export function Suppliers() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Telefone</label>
+                  <label className="text-sm font-medium">Telefone/WhatsApp</label>
                   <input 
                     type="tel" 
                     className="w-full h-10 px-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))] outline-none transition-all"
@@ -258,6 +220,22 @@ export function Suppliers() {
                 <Button onClick={handleSaveSupplier} disabled={!newSupplierForm.name}>Salvar</Button>
               </div>
             </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteModalOpen && supplierToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-sm shadow-xl p-6 space-y-4">
+            <CardTitle>Confirmar Exclusão</CardTitle>
+            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+              Tem certeza que deseja apagar o fornecedor <strong>{supplierToDelete.name}</strong>? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsDeleteModalOpen(false)}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmDelete}>Apagar</Button>
+            </div>
           </Card>
         </div>
       )}

@@ -50,9 +50,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     { name: "Configurações", path: "/app/settings", icon: Settings },
   ];
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     localStorage.removeItem('master_bypass');
-    signOut(auth).catch(console.error);
+    try {
+      await signOut(auth);
+      window.location.href = '/'; 
+    } catch (error) {
+      console.error("Logout failed", error);
+    }
   };
 
   return (
