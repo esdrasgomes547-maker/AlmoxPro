@@ -5,14 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database, FileText, Calculator, BarChart3 } from "lucide-react";
+import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database } from "lucide-react";
 import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateInventoryReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
 import { InventoryItem, MovementItem } from "../types";
-import { normalizeSearch, formatBRL, preciseMultiply, preciseSum, exportInventoryCSV, generateInventoryPDF, generateCategoryReportPDF } from "../lib/exportService";
-import { BudgetSimulator } from "../components/BudgetSimulator";
 
 export function Inventory() {
   const { orgId } = useOrganization();
@@ -54,24 +52,13 @@ export function Inventory() {
     return () => unsub();
   }, [orgId]);
 
-  const [isBudgetOpen, setIsBudgetOpen] = useState(false);
-
-  // Busca otimizada com normalização de acentos (PT-BR)
   const filteredData = React.useMemo(() => {
-    if (!searchTerm.trim()) return inventory;
-    const normalizedTerm = normalizeSearch(searchTerm);
+    const lowerTerm = searchTerm.toLowerCase();
     return inventory.filter(item => 
-      normalizeSearch(item.name).includes(normalizedTerm) || 
-      normalizeSearch(item.id).includes(normalizedTerm) ||
-      normalizeSearch(item.category).includes(normalizedTerm) ||
-      normalizeSearch(item.location).includes(normalizedTerm)
+      item.name.toLowerCase().includes(lowerTerm) || 
+      item.id.toLowerCase().includes(lowerTerm)
     );
   }, [inventory, searchTerm]);
-
-  // Cálculo preciso do valor total do estoque
-  const totalStockValue = useMemo(() => {
-    return preciseSum(inventory.map(item => preciseMultiply(item.qty, item.price)));
-  }, [inventory]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedItems(e.target.checked ? filteredData.map(item => item.id) : []);
@@ -290,9 +277,7 @@ export function Inventory() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Controle de Estoque</h1>
-          <p className="text-[hsl(var(--muted-foreground))] text-sm">
-            {inventory.length} SKUs cadastrados · Valor total: <span className="font-semibold text-[hsl(var(--primary))]">{formatBRL(totalStockValue)}</span>
-          </p>
+          <p className="text-[hsl(var(--muted-foreground))] text-sm">Gerencie seus produtos, SKUs e alocação no armazém.</p>
         </div>
         
         <div className="flex flex-wrap items-center gap-2">
@@ -302,26 +287,17 @@ export function Inventory() {
               Catálogo GLP
             </Button>
           )}
-          <Button variant="outline" size="sm" onClick={() => setIsBudgetOpen(true)}>
-            <Calculator className="h-4 w-4 mr-2" />
-            Orçamento
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => generateInventoryPDF(inventory)}>
-            <FileText className="h-4 w-4 mr-2" />
-            PDF
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => generateCategoryReportPDF(inventory)} className="hidden sm:flex">
-            <BarChart3 className="h-4 w-4 mr-2" />
-            Por Categoria
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => exportInventoryCSV(inventory)}>
-            <Download className="h-4 w-4 mr-2" />
-            Planilha
-          </Button>
           <Button variant="outline" size="sm" onClick={() => {
             const report = generateInventoryReport(inventory);
+            sendEmailReport("", "Relatório de Estoque - TECGAS", report);
+          }}>
+            <Mail className="h-4 w-4 mr-2" />
+            Email
+          </Button>
+          <Button variant="outline" size="sm" className="hidden sm:flex" onClick={() => {
+            const report = generateInventoryReport(inventory);
             sendWhatsAppNotification("", report);
-          }} className="hidden sm:flex">
+          }}>
             <Phone className="h-4 w-4 mr-2" />
             WhatsApp
           </Button>
@@ -352,10 +328,7 @@ export function Inventory() {
               <Button variant="ghost" size="sm" className="h-7 px-2 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/20 hover:text-[hsl(var(--primary))]" onClick={handleUpdateStatus}>
                 <Edit2 className="h-3.5 w-3.5 mr-1" /> Reabastecer
               </Button>
-              <Button variant="ghost" size="sm" className="h-7 px-2 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/20 hover:text-[hsl(var(--primary))]" onClick={() => {
-                const selectedData = inventory.filter(item => selectedItems.includes(item.id));
-                exportInventoryCSV(selectedData);
-              }}>
+              <Button variant="ghost" size="sm" className="h-7 px-2 text-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))]/20 hover:text-[hsl(var(--primary))]" onClick={() => console.log(`Exportando ${selectedItems.length} selecionados`)}>
                 <Download className="h-3.5 w-3.5 mr-1" /> Exportar
               </Button>
               <Button variant="ghost" size="sm" className="h-7 px-2 text-destructive hover:bg-destructive/10" onClick={handleDeleteSelected}>
@@ -416,7 +389,7 @@ export function Inventory() {
                     </span>
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-right font-mono text-sm max-w-[100px] truncate">
-                    {formatBRL(item.price)}
+                    {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(item.price)}
                   </TableCell>
                   <TableCell className="hidden sm:table-cell text-center">
                     {getStatusBadge(item.status)}
@@ -712,13 +685,6 @@ export function Inventory() {
           </Card>
         </div>
       )}
-
-      {/* Simulador de Orçamento */}
-      <BudgetSimulator
-        inventory={inventory}
-        isOpen={isBudgetOpen}
-        onClose={() => setIsBudgetOpen(false)}
-      />
     </div>
   );
 }

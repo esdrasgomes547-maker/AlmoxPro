@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { TradingDashboard } from '../components/dashboard/TradingDashboard';
 import { Link } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Package, Truck, AlertTriangle, ArrowUpRight, ArrowDownRight, PackageCheck, ChevronRight } from "lucide-react";
@@ -7,7 +8,6 @@ import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
 import { collection, onSnapshot, query, doc, limit, orderBy } from "firebase/firestore";
 import { useOrganization } from "../lib/tenant";
 import { InventoryItem, ShipmentItem, CompanySettings } from "../types";
-import { formatBRL, preciseMultiply, preciseSum, formatNumber } from "../lib/exportService";
 
 export function Dashboard() {
   const { orgId } = useOrganization();
@@ -66,18 +66,19 @@ export function Dashboard() {
     }
   }, [orgId]);
 
-  const { alerts, shippedCount, inTransitCount, totalVolume, totalStockValue } = React.useMemo(() => {
+  const { alerts, shippedCount, inTransitCount, totalVolume } = React.useMemo(() => {
     return {
       alerts: inventory.filter(item => item.status === 'WARNING' || item.status === 'CRITICAL' || item.status === 'OUT_OF_STOCK'),
       shippedCount: shipments.filter(s => s.status === 'DELIVERED' || s.status === 'SHIPPED').length,
       inTransitCount: shipments.filter(s => s.status === 'PREPARING' || s.status === 'PENDING').length,
-      totalVolume: inventory.reduce((acc, item) => acc + item.qty, 0),
-      totalStockValue: preciseSum(inventory.map(item => preciseMultiply(item.qty, item.price))),
+      totalVolume: inventory.reduce((acc, item) => acc + item.qty, 0)
     };
   }, [inventory, shipments]);
 
   return (
     <div className="space-y-6">
+      <TradingDashboard />
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -122,8 +123,12 @@ export function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold font-mono">{shippedCount}</div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-                {shipments.length} expedições registradas
+              <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center mt-1">
+                <span className="text-emerald-500 flex items-center mr-1">
+                  <ArrowUpRight className="h-3 w-3" />
+                  +12.5%
+                </span> 
+                vs. mês anterior
               </p>
             </CardContent>
           </Card>
@@ -137,8 +142,12 @@ export function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold font-mono">{inTransitCount}</div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-                Aguardando preparo ou envio
+              <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center mt-1">
+                <span className="text-destructive flex items-center mr-1">
+                  <ArrowDownRight className="h-3 w-3" />
+                  -4.1%
+                </span> 
+                vs. mês anterior
               </p>
             </CardContent>
           </Card>
@@ -152,10 +161,14 @@ export function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold font-mono">
-                {formatNumber(totalVolume)}
+                {totalVolume.toLocaleString()}
               </div>
-              <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">
-                Valor: <span className="font-semibold">{formatBRL(totalStockValue)}</span>
+              <p className="text-xs text-[hsl(var(--muted-foreground))] flex items-center mt-1">
+                <span className="text-emerald-500 flex items-center mr-1">
+                  <ArrowUpRight className="h-3 w-3" />
+                  +2.1%
+                </span> 
+                vs. mês anterior
               </p>
             </CardContent>
           </Card>
