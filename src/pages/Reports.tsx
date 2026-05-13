@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Download, FileBarChart } from "lucide-react";
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
+import autoTable from 'jspdf-autotable';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { collection, onSnapshot, query, limit } from 'firebase/firestore';
 import { useOrganization } from "../lib/tenant";
@@ -38,16 +38,18 @@ export function Reports() {
 
   const downloadPDF = () => {
     const doc = new jsPDF();
-    doc.text(`Relatório de Inventário Atual - ${new Date().toLocaleDateString()}`, 14, 15);
+    doc.text(`Relatório de Inventário Completo - ${new Date().toLocaleDateString()}`, 14, 15);
     
-    const tableData = Object.entries(reportData).map(([category, data]) => [
-      category,
-      data.qty.toString(),
-      `R$ ${data.totalValue.toFixed(2)}`
+    const tableData = inventory.map(item => [
+      item.name,
+      item.category,
+      item.qty.toString(),
+      `R$ ${item.price.toFixed(2)}`,
+      `R$ ${(item.qty * item.price).toFixed(2)}`
     ]);
 
-    (doc as any).autoTable({
-      head: [['Categoria', 'Quantidade', 'Valor Total']],
+    autoTable(doc, {
+      head: [['Produto', 'Categoria', 'Quantidade', 'Valor Un.', 'Total Venda']],
       body: tableData,
       startY: 20,
     });
@@ -55,14 +57,39 @@ export function Reports() {
     const finalY = (doc as any).lastAutoTable.finalY + 10;
     doc.text(`Valor Total do Inventário: R$ ${grandTotal.toFixed(2)}`, 14, finalY);
     
-    doc.save('relatorio_inventario.pdf');
+    doc.save('relatorio_inventario_completo.pdf');
+  };
+
+  const downloadCSV = () => {
+    const headers = ['Produto', 'Categoria', 'Quantidade', 'Valor Un.', 'Total Venda'];
+    const rows = inventory.map(item => [
+      item.name,
+      item.category,
+      item.qty,
+      item.price.toFixed(2),
+      (item.qty * item.price).toFixed(2)
+    ]);
+    
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "relatorio_inventario.csv");
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Relatórios de Inventário</h1>
-        <Button onClick={downloadPDF}><Download className="mr-2 h-4 w-4" /> Baixar PDF</Button>
+        <div className="flex gap-2">
+            <Button variant="outline" onClick={downloadCSV}><Download className="mr-2 h-4 w-4" /> Baixar CSV</Button>
+            <Button onClick={downloadPDF}><Download className="mr-2 h-4 w-4" /> Baixar PDF</Button>
+        </div>
       </div>
 
       <Card>

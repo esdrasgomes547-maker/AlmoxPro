@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database } from "lucide-react";
 import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit } from "firebase/firestore";
@@ -59,6 +60,14 @@ export function Inventory() {
       item.id.toLowerCase().includes(lowerTerm)
     );
   }, [inventory, searchTerm]);
+
+  const categoryData = useMemo(() => {
+    const map = new Map<string, number>();
+    inventory.forEach(item => {
+        map.set(item.category, (map.get(item.category) || 0) + item.qty);
+    });
+    return Array.from(map, ([name, value]) => ({ name, value }));
+  }, [inventory]);
 
   const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSelectedItems(e.target.checked ? filteredData.map(item => item.id) : []);
@@ -307,6 +316,23 @@ export function Inventory() {
           </Button>
         </div>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Quantidade por Categoria</CardTitle>
+        </CardHeader>
+        <CardContent className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={categoryData}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="value" fill="hsl(var(--primary))" />
+            </BarChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="p-4 pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
