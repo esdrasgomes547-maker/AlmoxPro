@@ -169,12 +169,17 @@ export function Landing() {
       </section>
 
       {/* Footer */}
-      <footer className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))]">
+      <footer className="py-10 text-center text-sm text-[hsl(var(--muted-foreground))] space-y-2">
         <div className="flex items-center justify-center space-x-2 mb-4">
           <div className="w-6 h-6 grayscale opacity-80"><TecgasLogo /></div>
           <span className="font-bold text-lg uppercase">Almox pro</span>
         </div>
         <p>&copy; 2026 Almox pro. Todos os direitos reservados.</p>
+        <div className="pt-4 border-t border-[hsl(var(--border))]">
+          <p>Desenvolvido por <span className="font-semibold">LevTheDev Company</span></p>
+          <p>Criador: <span className="font-semibold">Esdras Nunes</span>, Desenvolvedor de Software</p>
+          <p className="mt-2">Contato: <a href="mailto:esdrasgomes547@gmail.com" className="text-[hsl(var(--primary))] hover:underline">esdrasgomes547@gmail.com</a></p>
+        </div>
       </footer>
 
     </div>

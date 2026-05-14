@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Search, Plus, Filter, Download, ArrowUpRight, ArrowDownRight, PackageCheck, Send, CheckCircle2, Clock, X, Trash2, Edit2, Mail, Phone } from "lucide-react";
 import { db, handleFirestoreError, OperationType } from "../lib/firebase";
-import { collection, onSnapshot, query, doc, setDoc, deleteDoc, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, setDoc, deleteDoc, orderBy, limit, startAfter, getDocs, DocumentSnapshot, QueryDocumentSnapshot } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateShipmentsReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
 import { ShipmentItem } from "../types";
@@ -18,21 +18,44 @@ export function Shipments() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newShipmentForm, setNewShipmentForm] = useState({ destination: "", items: 1, driver: "", vehicle: "", status: "PENDING" as ShipmentItem["status"] });
 
+  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
     if (!orgId) return;
+    setLoading(true);
     const q = query(
       collection(db, `organizations/${orgId}/shipments`), 
       orderBy("date", "desc"), 
-      limit(2000)
+      limit(20)
     );
     const unsub = onSnapshot(q, (snap) => {
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ShipmentItem));
       setShipments(items);
+      setLastVisible(snap.docs[snap.docs.length - 1] || null);
+      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `organizations/${orgId}/shipments`);
+      setLoading(false);
     });
     return () => unsub();
   }, [orgId]);
+
+  const loadMore = async () => {
+    if (!orgId || !lastVisible) return;
+    setLoading(true);
+    const nextQ = query(
+      collection(db, `organizations/${orgId}/shipments`),
+      orderBy("date", "desc"),
+      startAfter(lastVisible),
+      limit(20)
+    );
+    const snap = await getDocs(nextQ);
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as ShipmentItem));
+    setShipments(prev => [...prev, ...items]);
+    setLastVisible(snap.docs[snap.docs.length - 1] || null);
+    setLoading(false);
+  };
 
   const filteredData = React.useMemo(() => {
     const term = searchTerm.toLowerCase();
@@ -221,6 +244,13 @@ export function Shipments() {
               )}
             </TableBody>
           </Table>
+          {lastVisible && (
+            <div className="p-4 text-center">
+              <Button onClick={loadMore} disabled={loading} variant="outline">
+                {loading ? "Carregando..." : "Carregar mais"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 

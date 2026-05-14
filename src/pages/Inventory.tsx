@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database } from "lucide-react";
 import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
-import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit } from "firebase/firestore";
+import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit, startAfter, getDocs, DocumentSnapshot, QueryDocumentSnapshot } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateInventoryReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
 import { InventoryItem, MovementItem, Category } from "../types";
@@ -16,6 +16,7 @@ import { isDemo } from '../lib/demo';
 
 export function Inventory() {
   const { orgId } = useOrganization();
+  console.log("DEBUG: orgId is", orgId);
   const [searchParams] = useSearchParams();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -43,29 +44,53 @@ export function Inventory() {
   }, [selectedProduct, orgId]);
 
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || orgId === "undefined") return;
     const q = query(collection(db, `organizations/${orgId}/categories`));
     const unsub = onSnapshot(q, (snap) => {
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
       setCategories(items);
     }, (error) => {
+      console.error("DEBUG: Failed to list categories for orgId:", orgId, "error:", error);
       handleFirestoreError(error, OperationType.LIST, `organizations/${orgId}/categories`);
     });
     return () => unsub();
   }, [orgId]);
 
+  const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+
   useEffect(() => {
     if (!orgId) return;
+    setLoading(true);
     // Optimizing massive database: Limit the total loaded items if the database grows massively
-    const q = query(collection(db, `organizations/${orgId}/inventory`), limit(1000));
+    const q = query(collection(db, `organizations/${orgId}/inventory`), orderBy("name"), limit(20));
     const unsub = onSnapshot(q, (snap) => {
       const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem));
       setInventory(items);
+      setLastVisible(snap.docs[snap.docs.length - 1] || null);
+      setLoading(false);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, `organizations/${orgId}/inventory`);
+      setLoading(false);
     });
     return () => unsub();
   }, [orgId]);
+
+  const loadMore = async () => {
+    if (!orgId || !lastVisible) return;
+    setLoading(true);
+    const nextQ = query(
+      collection(db, `organizations/${orgId}/inventory`),
+      orderBy("name"),
+      startAfter(lastVisible),
+      limit(20)
+    );
+    const snap = await getDocs(nextQ);
+    const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as InventoryItem));
+    setInventory(prev => [...prev, ...items]);
+    setLastVisible(snap.docs[snap.docs.length - 1] || null);
+    setLoading(false);
+  };
 
   const filteredData = React.useMemo(() => {
     const lowerTerm = searchTerm.toLowerCase();
@@ -148,6 +173,7 @@ export function Inventory() {
   };
 
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [deleteProductConfirm, setDeleteProductConfirm] = useState<{ productId: string, productName: string } | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [isDeleteCategoryModalOpen, setIsDeleteCategoryModalOpen] = useState(false);
@@ -245,6 +271,20 @@ export function Inventory() {
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, `organizations/${orgId}/categories`);
     }
+  };
+
+  const handleDeleteProduct = (productId: string, productName: string) => {
+    setDeleteProductConfirm({ productId, productName });
+  };
+
+  const confirmDeleteProduct = async () => {
+    if (!deleteProductConfirm || !orgId) return;
+    try {
+        await deleteDoc(doc(db, `organizations/${orgId}/inventory`, deleteProductConfirm.productId));
+    } catch (error) {
+        handleFirestoreError(error, OperationType.DELETE, `organizations/${orgId}/inventory/${deleteProductConfirm.productId}`);
+    }
+    setDeleteProductConfirm(null);
   };
 
   const confirmDeleteCategory = async () => {
@@ -405,7 +445,7 @@ export function Inventory() {
                    </div>
                 </div>
                 <p className="text-sm mb-4">{cat.description}</p>
-                <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="grid grid-cols-2 gap-2 text-sm mb-4">
                   <div className="bg-muted p-2 rounded">
                     <span className="block text-muted-foreground">Qtd</span>
                     <span className="font-bold">{totalQty}</span>
@@ -414,6 +454,18 @@ export function Inventory() {
                     <span className="block text-muted-foreground">Valor</span>
                     <span className="font-bold text-primary">R$ {totalValue.toFixed(2)}</span>
                   </div>
+                </div>
+                <div className="space-y-2 mt-4 max-h-40 overflow-y-auto">
+                    {catItems.map(item => (
+                      <div key={item.id} className="flex justify-between items-center text-sm border-b pb-1">
+                        <span className="truncate flex-1">{item.name} ({item.qty})</span>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0 text-destructive"
+                          onClick={(e) => { e.stopPropagation(); handleDeleteProduct(item.id, item.name); }}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
                 </div>
               </Card>
             )
@@ -514,6 +566,9 @@ export function Inventory() {
                     <Button variant="ghost" size="icon" onClick={() => openHistory(item)} title="Ver Histórico">
                       <History className="h-4 w-4 text-[hsl(var(--muted-foreground))]" />
                     </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(item.id, item.name)} title="Excluir">
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))}
@@ -527,6 +582,13 @@ export function Inventory() {
               )}
             </TableBody>
           </Table>
+          {lastVisible && (
+            <div className="p-4 text-center">
+              <Button onClick={loadMore} disabled={loading} variant="outline">
+                {loading ? "Carregando..." : "Carregar mais"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -647,6 +709,20 @@ export function Inventory() {
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setIsDeleteCategoryModalOpen(false)}>Cancelar</Button>
               <Button variant="destructive" onClick={confirmDeleteCategory}>Apagar</Button>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* Delete Product Confirmation Modal */}
+      {deleteProductConfirm && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-sm shadow-xl p-6 space-y-4">
+            <CardTitle>Confirmar Exclusão</CardTitle>
+            <p className="text-sm">Tem certeza que deseja apagar o produto <strong>{deleteProductConfirm.productName}</strong>? Esta ação não pode ser desfeita.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteProductConfirm(null)}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmDeleteProduct}>Apagar</Button>
             </div>
           </Card>
         </div>

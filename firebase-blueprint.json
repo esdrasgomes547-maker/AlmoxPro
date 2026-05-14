@@ -105,6 +105,18 @@
         "userEmail": { "type": "string" }
       },
       "required": ["type", "qty", "reason", "date", "user", "userEmail"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Inventory Category",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "purpose": { "type": "string" },
+        "photoUrl": { "type": "string" }
+      },
+      "required": ["name", "description", "purpose"]
     }
   },
   "firestore": {
@@ -115,6 +127,10 @@
     "/organizations/{orgId}/inventory/{itemId}/movements/{movementId}": {
       "schema": { "$ref": "#/entities/Movement" },
       "description": "Inventory item movements"
+    },
+    "/organizations/{orgId}/categories/{categoryId}": {
+      "schema": { "$ref": "#/entities/Category" },
+      "description": "Tenant Categories Collection"
     },
     "/organizations/{orgId}/shipments/{shipmentId}": {
       "schema": { "$ref": "#/entities/Shipment" },

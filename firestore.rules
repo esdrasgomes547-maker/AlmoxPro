@@ -72,6 +72,15 @@ service cloud.firestore {
              data.status is string && data.status.size() <= 50;
     }
 
+    function isValidCategory(data) {
+      return data.keys().hasAll(['name', 'description', 'purpose']) &&
+             (data.keys().size() == 3 || (data.keys().size() == 4 && data.keys().hasAll(['photoUrl']))) &&
+             data.name is string && data.name.size() <= 100 &&
+             data.description is string && data.description.size() <= 200 &&
+             data.purpose is string && data.purpose.size() <= 100 &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 255));
+    }
+
     // --- Rules ---
 
     match /users/{uid} {
@@ -118,6 +127,15 @@ service cloud.firestore {
       allow read: if isMaster() || isOrgMember(orgId);
       allow create: if (isMaster() || isOrgMember(orgId)) && isValidSupplier(incoming());
       allow update: if (isMaster() || isOrgMember(orgId)) && isValidId(supplierId) && isValidSupplier(incoming());
+      allow delete: if isMaster() || isOrgMember(orgId);
+    }
+
+    // Categories
+    match /organizations/{orgId}/categories/{document=**} {
+      allow read: if isMaster() || isOrgMember(orgId);
+      allow list: if isMaster() || isOrgMember(orgId);
+      allow create: if (isMaster() || isOrgMember(orgId)) && isValidCategory(incoming());
+      allow update: if (isMaster() || isOrgMember(orgId)) && isValidCategory(incoming());
       allow delete: if isMaster() || isOrgMember(orgId);
     }
 
