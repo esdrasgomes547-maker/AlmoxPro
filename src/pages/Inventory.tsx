@@ -12,6 +12,7 @@ import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, order
 import { sendWhatsAppNotification, sendEmailReport, generateInventoryReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
 import { InventoryItem, MovementItem, Category } from "../types";
+import { isDemo } from '../lib/demo';
 
 export function Inventory() {
   const { orgId } = useOrganization();
@@ -204,8 +205,9 @@ export function Inventory() {
   };
 
   const handleSaveProduct = async () => {
+    if (isDemo()) return;
     if (!validateForm() || !orgId) return;
-
+    
     let newStatus = 'OK';
     if(newItemForm.qty <= 0) newStatus = 'OUT_OF_STOCK';
     else if(newItemForm.qty <= newItemForm.minQty) newStatus = 'CRITICAL';
@@ -233,6 +235,7 @@ export function Inventory() {
   };
 
   const handleSaveCategory = async () => {
+    if (isDemo()) return;
     if (!orgId || !newCategoryForm.name) return;
     try {
       const newId = newCategoryForm.name.toLowerCase().replace(/\s+/g, '-');
@@ -245,6 +248,7 @@ export function Inventory() {
   };
 
   const confirmDeleteCategory = async () => {
+    if (isDemo()) return;
     if (!orgId || !categoryToDelete) return;
     try {
       await deleteDoc(doc(db, `organizations/${orgId}/categories`, categoryToDelete.id));

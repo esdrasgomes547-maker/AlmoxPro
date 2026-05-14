@@ -165,24 +165,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col h-screen overflow-hidden w-full relative">
         {/* Header */}
         <header className="h-16 border-b border-[hsl(var(--border))] bg-[hsl(var(--card))] flex items-center justify-between px-4 sm:px-8 shrink-0">
-          <div className="flex items-center">
+          <div className="flex items-center gap-4">
             {/* Mobile Menu Button */}
             <button 
-              className="md:hidden mr-4 p-2 -ml-2 rounded-md text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))]"
+              className="md:hidden p-2 -ml-2 rounded-md text-[hsl(var(--muted-foreground))] hover:bg-[hsl(var(--accent))]"
               onClick={() => setIsMobileOpen(true)}
             >
               <Menu className="h-5 w-5" />
             </button>
-            
-            <div className="hidden sm:flex items-center w-64 md:w-96 relative">
+          </div>
+
+          <div className="hidden sm:flex items-center w-48 md:w-64 relative">
               <Search className="h-4 w-4 absolute left-3 text-[hsl(var(--muted-foreground))]" />
               <input 
                 type="text" 
-                placeholder="Buscar ordens, SKUs ou clientes..." 
+                placeholder="Buscar..." 
                 className="w-full h-9 pl-9 pr-4 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--primary))]/20 focus:border-[hsl(var(--primary))]"
               />
             </div>
-          </div>
           
           <div className="flex items-center space-x-2 sm:space-x-4">
             <button 

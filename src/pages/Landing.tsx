@@ -23,6 +23,11 @@ export function Landing() {
     navigate('/login');
   };
 
+  const handleDemo = () => {
+    localStorage.setItem('isDemoMode', 'true');
+    navigate('/app/dashboard');
+  };
+
   return (
     <div className="min-h-screen bg-[hsl(var(--background))] text-[hsl(var(--foreground))] selection:bg-[hsl(var(--primary))]/30">
       
@@ -55,7 +60,7 @@ export function Landing() {
           <Button size="lg" className="w-full sm:w-auto h-14 px-8 text-lg" onClick={handleLogin}>
             Começar agora
           </Button>
-          <Button variant="outline" size="lg" className="w-full sm:w-auto h-14 px-8 text-lg" onClick={handleLogin}>
+          <Button variant="outline" size="lg" className="w-full sm:w-auto h-14 px-8 text-lg" onClick={handleDemo}>
             Ver demonstração
           </Button>
         </div>

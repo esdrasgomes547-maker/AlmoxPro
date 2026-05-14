@@ -23,7 +23,8 @@ export function AccessGuard({ children, requireMaster = false }: AccessGuardProp
 
   // Se não tem usuário logado, redireciona pra home (landing page)
   const isBypassed = localStorage.getItem('master_bypass') === 'true';
-  if (!auth.currentUser && !isBypassed) {
+  const isDemoMode = localStorage.getItem('isDemoMode') === 'true';
+  if (!auth.currentUser && !isBypassed && !isDemoMode) {
     return <Navigate to="/" replace />;
   }
 
