@@ -677,7 +677,10 @@ export function Inventory() {
               </div>
               <div className="pt-4 flex items-center justify-end space-x-2">
                 <Button variant="outline" onClick={() => { setIsAddModalOpen(false); setFormErrors({}); }}>Cancelar</Button>
-                <Button onClick={handleSaveProduct}>Salvar</Button>
+                <Button onClick={() => {
+                  console.log("DEBUG: Botão de salvar clicado. editingId:", editingId);
+                  handleSaveProduct();
+                }}>Salvar</Button>
               </div>
             </CardContent>
           </Card>
