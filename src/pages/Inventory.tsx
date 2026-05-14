@@ -11,12 +11,13 @@ import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateInventoryReport } from "../lib/notificationService";
 import { useOrganization } from "../lib/tenant";
-import { InventoryItem, MovementItem } from "../types";
+import { InventoryItem, MovementItem, Category } from "../types";
 
 export function Inventory() {
   const { orgId } = useOrganization();
   const [searchParams] = useSearchParams();
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<MovementItem[]>([]);
@@ -39,6 +40,18 @@ export function Inventory() {
     }, (err) => handleFirestoreError(err, OperationType.LIST, `organizations/${orgId}/inventory/${selectedProduct.id}/movements`));
     return () => unsub();
   }, [selectedProduct, orgId]);
+
+  useEffect(() => {
+    if (!orgId) return;
+    const q = query(collection(db, `organizations/${orgId}/categories`));
+    const unsub = onSnapshot(q, (snap) => {
+      const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as Category));
+      setCategories(items);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, `organizations/${orgId}/categories`);
+    });
+    return () => unsub();
+  }, [orgId]);
 
   useEffect(() => {
     if (!orgId) return;
@@ -135,8 +148,12 @@ export function Inventory() {
 
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isDeleteCategoryModalOpen, setIsDeleteCategoryModalOpen] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState<Category | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newItemForm, setNewItemForm] = useState({ name: "", category: "Conexões", location: "", qty: 0, minQty: 10, price: 0 });
+  const [newCategoryForm, setNewCategoryForm] = useState({ name: "", description: "", purpose: "", photoUrl: "" });
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
   const validateForm = () => {
@@ -212,6 +229,29 @@ export function Inventory() {
       setNewItemForm({ name: "", category: "Conexões", location: "", qty: 0, minQty: 10, price: 0 });
     } catch (error) {
       handleFirestoreError(error, editingId ? OperationType.UPDATE : OperationType.CREATE, `organizations/${orgId}/inventory/${editingId || 'new'}`);
+    }
+  };
+
+  const handleSaveCategory = async () => {
+    if (!orgId || !newCategoryForm.name) return;
+    try {
+      const newId = newCategoryForm.name.toLowerCase().replace(/\s+/g, '-');
+      await setDoc(doc(db, `organizations/${orgId}/categories`, newId), newCategoryForm);
+      setIsCategoryModalOpen(false);
+      setNewCategoryForm({ name: "", description: "", purpose: "", photoUrl: "" });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `organizations/${orgId}/categories`);
+    }
+  };
+
+  const confirmDeleteCategory = async () => {
+    if (!orgId || !categoryToDelete) return;
+    try {
+      await deleteDoc(doc(db, `organizations/${orgId}/categories`, categoryToDelete.id));
+      setIsDeleteCategoryModalOpen(false);
+      setCategoryToDelete(null);
+    } catch (error) {
+       handleFirestoreError(error, OperationType.DELETE, `organizations/${orgId}/categories/${categoryToDelete.id}`);
     }
   };
 
@@ -333,6 +373,49 @@ export function Inventory() {
           </ResponsiveContainer>
         </CardContent>
       </Card>
+      
+      <div className="mb-8">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Categorias</h2>
+          <Button size="sm" onClick={() => setIsCategoryModalOpen(true)}>
+             <Plus className="h-4 w-4 mr-2" /> Nova Categoria
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {categories.map(cat => {
+            const catItems = inventory.filter(i => i.category === cat.name);
+            const totalQty = catItems.reduce((acc, curr) => acc + curr.qty, 0);
+            const totalValue = catItems.reduce((acc, curr) => acc + (curr.qty * curr.price), 0);
+            return (
+              <Card key={cat.id} className="relative p-5">
+                <Button variant="ghost" size="sm" className="absolute top-2 right-2 text-destructive" onClick={() => { setCategoryToDelete(cat); setIsDeleteCategoryModalOpen(true); }}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                <div className="flex items-center gap-4 mb-4">
+                   <div className="w-16 h-16 rounded-lg bg-gray-200 overflow-hidden">
+                      {cat.photoUrl ? <img src={cat.photoUrl} alt={cat.name} className="w-full h-full object-cover"/> : <div className="w-full h-full flex items-center justify-center text-gray-500">Foto</div>}
+                   </div>
+                   <div>
+                     <CardTitle className="text-lg">{cat.name}</CardTitle>
+                     <p className="text-xs text-muted-foreground">{cat.purpose}</p>
+                   </div>
+                </div>
+                <p className="text-sm mb-4">{cat.description}</p>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="bg-muted p-2 rounded">
+                    <span className="block text-muted-foreground">Qtd</span>
+                    <span className="font-bold">{totalQty}</span>
+                  </div>
+                  <div className="bg-muted p-2 rounded">
+                    <span className="block text-muted-foreground">Valor</span>
+                    <span className="font-bold text-primary">R$ {totalValue.toFixed(2)}</span>
+                  </div>
+                </div>
+              </Card>
+            )
+          })}
+        </div>
+      </div>
 
       <Card>
         <CardHeader className="p-4 pb-0 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -474,12 +557,7 @@ export function Inventory() {
                     onChange={(e) => handleChange('category', e.target.value)}
                   >
                     <option value="">Selecione...</option>
-                    <option value="Conexões">Conexões</option>
-                    <option value="Tubulações">Tubulações</option>
-                    <option value="Equipamentos">Equipamentos</option>
-                    <option value="Ferramentas">Ferramentas</option>
-                    <option value="Materiais de Consumo">Materiais de Consumo</option>
-                    <option value="EPI">EPI</option>
+                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                   </select>
                   {formErrors.category && <p className="text-xs text-destructive mt-1">{formErrors.category}</p>}
                 </div>
@@ -536,6 +614,36 @@ export function Inventory() {
                 <Button onClick={handleSaveProduct}>Salvar</Button>
               </div>
             </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Add Category Modal */}
+      {isCategoryModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+           <Card className="w-full max-w-sm shadow-xl p-6 space-y-4">
+              <CardTitle>Nova Categoria</CardTitle>
+              <input type="text" placeholder="Nome" className="w-full p-2 border rounded" value={newCategoryForm.name} onChange={e => setNewCategoryForm({...newCategoryForm, name: e.target.value})} />
+              <input type="text" placeholder="Descrição" className="w-full p-2 border rounded" value={newCategoryForm.description} onChange={e => setNewCategoryForm({...newCategoryForm, description: e.target.value})} />
+              <input type="text" placeholder="Finalidade" className="w-full p-2 border rounded" value={newCategoryForm.purpose} onChange={e => setNewCategoryForm({...newCategoryForm, purpose: e.target.value})} />
+              <div className="flex justify-end gap-2">
+                 <Button variant="outline" onClick={() => setIsCategoryModalOpen(false)}>Cancelar</Button>
+                 <Button onClick={handleSaveCategory}>Adicionar</Button>
+              </div>
+           </Card>
+        </div>
+      )}
+
+      {/* Delete Category Confirmation Modal */}
+      {isDeleteCategoryModalOpen && categoryToDelete && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <Card className="w-full max-w-sm shadow-xl p-6 space-y-4">
+            <CardTitle>Confirmar Exclusão</CardTitle>
+            <p className="text-sm">Tem certeza que deseja apagar a categoria <strong>{categoryToDelete.name}</strong>? Esta ação não pode ser desfeita.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsDeleteCategoryModalOpen(false)}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmDeleteCategory}>Apagar</Button>
+            </div>
           </Card>
         </div>
       )}

@@ -9,6 +9,14 @@ export interface InventoryItem {
   status: 'OK' | 'WARNING' | 'CRITICAL' | 'OUT_OF_STOCK';
 }
 
+export interface Category {
+  id: string;
+  name: string;
+  description: string;
+  purpose: string;
+  photoUrl?: string;
+}
+
 export interface MovementItem {
   id: string;
   type: 'IN' | 'OUT';
