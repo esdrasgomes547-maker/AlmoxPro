@@ -18,22 +18,18 @@ service cloud.firestore {
     function existing() { return resource.data; }
 
     function isMaster() { 
-      return isSignedIn() && (
-        request.auth.token.email == 'esdrasgomes547@gmail.com' ||
-        (request.auth.token.email_verified == true && exists(/databases/$(database)/documents/masters/$(request.auth.token.email)))
-      );
+      return isSignedIn() && request.auth.token.role == 'master';
     }
-    
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+
+    // premium_max -> cliente pagante ativo
+    function isPremiumMax() {
+      return isSignedIn() && request.auth.token.role == 'premium_max';
     }
     
     function isOrgMember(orgId) {
-      return orgId == 'demo-org' || (isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId == orgId);
-    }
-
-    function isPremium() {
-      return isSignedIn() && (getUserData().role == 'premium_max' || isMaster());
+      return isSignedIn() && 
+             exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             get(/databases/$(database)/documents/users/$(request.auth.uid)).data.orgId == orgId;
     }
 
     // --- Validation Helpers ---
@@ -83,66 +79,63 @@ service cloud.firestore {
 
     // --- Rules ---
 
+    // users/{uid} -> próprio usuário ou master
     match /users/{uid} {
-      allow read: if isMaster() || (isSignedIn() && request.auth.uid == uid);
-      allow create: if (isSignedIn() && request.auth.uid == uid && 
-                       incoming().keys().hasAll(['orgId', 'role', 'plan', 'email']) &&
-                       incoming().role != 'admin') || isMaster();
-      allow update: if isMaster() || (isSignedIn() && request.auth.uid == uid && 
-                      incoming().diff(existing()).affectedKeys().hasOnly(['orgId', 'email']));
+      allow read, write: if isMaster() || (isSignedIn() && request.auth.uid == uid);
     }
 
-    match /masters/{email} {
-      allow read: if isMaster();
+    // subscriptions/{orgId} -> master ou isOrgMember(orgId) (só leitura para membro da org)
+    match /subscriptions/{orgId} {
+      allow read: if isMaster() || isOrgMember(orgId);
       allow write: if isMaster();
     }
 
+    // organizations/{orgId} -> master ou (premium_max && isOrgMember(orgId))
     match /organizations/{orgId} {
-      allow read: if isMaster() || isOrgMember(orgId);
+      allow read: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
       allow write: if isMaster();
-    }
 
-    // Inventory
-    match /organizations/{orgId}/inventory/{itemId} {
-      allow read: if isMaster() || isOrgMember(orgId);
-      allow create: if (isMaster() || isOrgMember(orgId)) && isValidInventoryItem(incoming());
-      allow update: if (isMaster() || isOrgMember(orgId)) && 
-                      isValidInventoryItem(incoming()) &&
-                      (incoming().diff(existing()).affectedKeys().hasAny(['qty', 'status', 'location', 'minQty', 'price', 'name', 'category']));
-      allow delete: if isMaster() || isOrgMember(orgId);
-    }
+      // Inventory
+      match /inventory/{itemId} {
+        allow read: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+        allow create: if (isMaster() || (isPremiumMax() && isOrgMember(orgId))) && isValidInventoryItem(incoming());
+        allow update: if (isMaster() || (isPremiumMax() && isOrgMember(orgId))) && isValidInventoryItem(incoming());
+        allow delete: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+      }
 
-    // Shipments
-    match /organizations/{orgId}/shipments/{shipmentId} {
-      allow read: if isMaster() || isOrgMember(orgId);
-      allow create: if (isMaster() || isOrgMember(orgId)) && isValidShipment(incoming());
-      allow update: if (isMaster() || isOrgMember(orgId)) && 
-                      isValidShipment(incoming()) &&
-                      (incoming().diff(existing()).affectedKeys().hasAny(['status', 'driver', 'vehicle', 'date', 'items', 'destination']));
-      allow delete: if isMaster() || isOrgMember(orgId);
-    }
+      // Shipments
+      match /shipments/{shipmentId} {
+        allow read: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+        allow create: if (isMaster() || (isPremiumMax() && isOrgMember(orgId))) && isValidShipment(incoming());
+        allow update: if (isMaster() || (isPremiumMax() && isOrgMember(orgId))) && isValidShipment(incoming());
+        allow delete: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+      }
 
-    // Suppliers
-    match /organizations/{orgId}/suppliers/{supplierId} {
-      allow read: if isMaster() || isOrgMember(orgId);
-      allow create: if (isMaster() || isOrgMember(orgId)) && isValidSupplier(incoming());
-      allow update: if (isMaster() || isOrgMember(orgId)) && isValidId(supplierId) && isValidSupplier(incoming());
-      allow delete: if isMaster() || isOrgMember(orgId);
-    }
+      // Suppliers
+      match /suppliers/{supplierId} {
+        allow read: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+        allow create: if (isMaster() || (isPremiumMax() && isOrgMember(orgId))) && isValidSupplier(incoming());
+        allow update: if (isMaster() || (isPremiumMax() && isOrgMember(orgId))) && isValidSupplier(incoming());
+        allow delete: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+      }
 
-    // Categories
-    match /organizations/{orgId}/categories/{document=**} {
-      allow read: if isMaster() || isOrgMember(orgId);
-      allow list: if isMaster() || isOrgMember(orgId);
-      allow create: if (isMaster() || isOrgMember(orgId)) && isValidCategory(incoming());
-      allow update: if (isMaster() || isOrgMember(orgId)) && isValidCategory(incoming());
-      allow delete: if isMaster() || isOrgMember(orgId);
-    }
+      // Employees
+      match /employees/{employeeId} {
+        allow read: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+        allow create, update, delete: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+      }
 
-    // Settings
-    match /organizations/{orgId}/settings/{settingsId} {
-      allow read: if isMaster() || isOrgMember(orgId);
-      allow write: if isMaster() || isOrgMember(orgId);
+      // Categories
+      match /categories/{document=**} {
+        allow read, list: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+        allow create, update: if (isMaster() || (isPremiumMax() && isOrgMember(orgId))) && isValidCategory(incoming());
+        allow delete: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+      }
+
+      // Settings
+      match /settings/{settingsId} {
+        allow read, write: if isMaster() || (isPremiumMax() && isOrgMember(orgId));
+      }
     }
   }
 }

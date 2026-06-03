@@ -20,9 +20,22 @@ export function Login() {
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
       const isBypass = localStorage.getItem('master_bypass') === 'true';
-      if (user || isBypass) {
+      if (user) {
+        try {
+          const { doc, getDoc } = await import('firebase/firestore');
+          const userDoc = await getDoc(doc(db, 'users', user.uid));
+          if (userDoc.exists() && userDoc.data()?.orgId) {
+            navigate('/app/dashboard');
+          } else {
+            navigate('/subscribe');
+          }
+        } catch (e) {
+          console.error("Erro ao obter perfil do usuário no login:", e);
+          navigate('/subscribe');
+        }
+      } else if (isBypass) {
         navigate('/app/dashboard');
       }
       setInitialLoading(false);
@@ -107,7 +120,6 @@ export function Login() {
     try {
       localStorage.removeItem('master_bypass');
       await signInWithGoogle();
-      navigate('/app/dashboard');
     } catch (err) {
       console.error(err);
     } finally {

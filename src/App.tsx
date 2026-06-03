@@ -2,10 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { Dashboard } from "./pages/Dashboard";
 import { Inventory } from "./pages/Inventory";
-import { Shipments } from "./pages/Shipments";
 import { Suppliers } from "./pages/Suppliers";
 import { Reports } from "./pages/Reports";
-import { SalesSimulation } from "./pages/SalesSimulation";
 import { Settings as SettingsPage } from "./pages/Settings";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { Landing } from "./pages/Landing";
@@ -21,6 +19,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/subscribe" element={<Subscribe />} />
           
           <Route 
             path="/master" 
@@ -42,10 +41,8 @@ export default function App() {
                     <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
                     <Route path="dashboard" element={<Dashboard />} />
                     <Route path="inventory" element={<Inventory />} />
-                    <Route path="shipments" element={<Shipments />} />
                     <Route path="suppliers" element={<Suppliers />} />
                     <Route path="reports" element={<Reports />} />
-                    <Route path="simulation" element={<SalesSimulation />} />
                     <Route path="settings" element={<SettingsPage />} />
                   </Routes>
                 </AppLayout>

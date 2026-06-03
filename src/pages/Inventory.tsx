@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database } from "lucide-react";
+import { Search, Plus, Download, Filter, History, X, ArrowUpRight, ArrowDownRight, Trash2, Edit2, Archive, Phone, Mail, Database, QrCode, Upload } from "lucide-react";
 import { db, handleFirestoreError, OperationType, auth } from "../lib/firebase";
 import { collection, onSnapshot, query, doc, setDoc, deleteDoc, updateDoc, orderBy, limit, startAfter, getDocs, DocumentSnapshot, QueryDocumentSnapshot } from "firebase/firestore";
 import { sendWhatsAppNotification, sendEmailReport, generateInventoryReport } from "../lib/notificationService";
@@ -24,6 +24,197 @@ export function Inventory() {
   const [selectedProduct, setSelectedProduct] = useState<InventoryItem | null>(null);
   const [history, setHistory] = useState<MovementItem[]>([]);
   const [newMovement, setNewMovement] = useState({ type: "IN" as "IN" | "OUT", qty: 0, reason: "" });
+
+  // QR Code and CSV states
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+  const [isQrModalOpen, setIsQrModalOpen] = useState(false);
+  const [qrInput, setQrInput] = useState("");
+  const [qrScanResult, setQrScanResult] = useState<InventoryItem | null>(null);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [qrQtyUpdate, setQrQtyUpdate] = useState(1);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // CSV Parsing helper
+  const parseCSV = (text: string) => {
+    const lines = text.split('\n');
+    if (lines.length <= 1) return [];
+    
+    const headers = lines[0].split(',').map(h => h.trim().replace(/^["']|["']$/g, '').toLowerCase());
+    const items: Partial<InventoryItem>[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (!line) continue;
+      
+      const values: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let charIndex = 0; charIndex < line.length; charIndex++) {
+        const char = line[charIndex];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === ',' && !inQuotes) {
+          values.push(current.trim().replace(/^["']|["']$/g, ''));
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      values.push(current.trim().replace(/^["']|["']$/g, ''));
+
+      const item: any = {};
+      headers.forEach((header, index) => {
+        const val = values[index];
+        if (val === undefined) return;
+        if (header === 'nome' || header === 'name') {
+          item.name = val;
+        } else if (header === 'categoria' || header === 'category') {
+          item.category = val;
+        } else if (header === 'localizacao' || header === 'localização' || header === 'location') {
+          item.location = val;
+        } else if (header === 'qtd' || header === 'quantidade' || header === 'qty') {
+          item.qty = Number(val) || 0;
+        } else if (header === 'minqty' || header === 'qtdmin' || header === 'minimo' || header === 'min') {
+          item.minQty = Number(val) || 0;
+        } else if (header === 'preco' || header === 'preço' || header === 'price' || header === 'valor') {
+          item.price = Number(val.replace('R$', '').replace(',', '.').trim()) || 0;
+        }
+      });
+      
+      if (item.name) {
+        items.push(item);
+      }
+    }
+    return items;
+  };
+
+  const handleCsvUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !orgId) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target?.result as string;
+      const parsed = parseCSV(text);
+      if (parsed.length === 0) {
+        alert("Nenhum item válido encontrado no CSV. Verifique o cabeçalho: name, category, location, qty, minQty, price");
+        return;
+      }
+
+      let successCount = 0;
+      for (const item of parsed) {
+        const newId = `GLP-${String(Math.floor(Math.random() * 9999)).padStart(4, '0')}`;
+        let status = 'OK';
+        const qty = item.qty || 0;
+        const minQty = item.minQty || 0;
+        if (qty <= 0) status = 'OUT_OF_STOCK';
+        else if (qty <= minQty) status = 'CRITICAL';
+        else if (qty <= minQty + 5) status = 'WARNING';
+
+        try {
+          await setDoc(doc(db, `organizations/${orgId}/inventory`, newId), {
+            name: item.name || "Produto Sem Nome",
+            category: item.category || "Geral",
+            location: item.location || "A1",
+            qty: qty,
+            minQty: minQty,
+            price: item.price || 0,
+            status
+          });
+          successCount++;
+        } catch (error) {
+          console.error("Erro ao importar item CSV:", item, error);
+        }
+      }
+      alert(`${successCount} itens importados com sucesso!`);
+      setIsCsvModalOpen(false);
+    };
+    reader.readAsText(file);
+  };
+
+  // QR Code camera stream setup
+  useEffect(() => {
+    let videoStream: MediaStream | null = null;
+    if (isQrModalOpen) {
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } })
+        .then(stream => {
+          videoStream = stream;
+          setCameraStream(stream);
+        })
+        .catch(err => {
+          console.warn("Câmera não disponível ou permissão negada. Usando simulador.", err);
+        });
+    } else {
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        setCameraStream(null);
+      }
+      setQrScanResult(null);
+      setQrInput("");
+    }
+    return () => {
+      if (videoStream) {
+        videoStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [isQrModalOpen]);
+
+  useEffect(() => {
+    if (videoRef.current && cameraStream) {
+      videoRef.current.srcObject = cameraStream;
+    }
+  }, [cameraStream]);
+
+  // QR Code Scan processing
+  const processQrCode = (sku: string) => {
+    const cleanSku = sku.trim();
+    if (!cleanSku) return;
+    const found = inventory.find(i => i.id.toLowerCase() === cleanSku.toLowerCase());
+    if (found) {
+      setQrScanResult(found);
+      setQrInput("");
+    } else {
+      alert("SKU / QR Code não encontrado no inventário!");
+    }
+  };
+
+  const handleQrMovement = async (type: 'IN' | 'OUT') => {
+    if (!qrScanResult || !orgId) return;
+    const user = auth.currentUser;
+    const movementId = `MOV-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+    const newQty = qrScanResult.qty + (type === "IN" ? qrQtyUpdate : -qrQtyUpdate);
+    
+    let newStatus = qrScanResult.status;
+    if(newQty <= 0) newStatus = 'OUT_OF_STOCK';
+    else if(newQty <= qrScanResult.minQty) newStatus = 'CRITICAL';
+    else if(newQty <= qrScanResult.minQty + 5) newStatus = 'WARNING';
+    else newStatus = 'OK';
+
+    const movData = {
+      type,
+      qty: qrQtyUpdate,
+      reason: type === "IN" ? "Entrada rápida via QR Code" : "Saída rápida via QR Code",
+      date: new Date().toISOString(),
+      user: user?.displayName || "Usuário QR",
+      userEmail: user?.email || "email@exemplo.com",
+    };
+
+    try {
+      await updateDoc(doc(db, `organizations/${orgId}/inventory`, qrScanResult.id), {
+        qty: newQty,
+        status: newStatus
+      });
+      await setDoc(doc(db, `organizations/${orgId}/inventory/${qrScanResult.id}/movements`, movementId), movData);
+      
+      const updatedItem = { ...qrScanResult, qty: newQty, status: newStatus };
+      setQrScanResult(updatedItem);
+      // Also update overall inventory state list
+      setInventory(prev => prev.map(item => item.id === qrScanResult.id ? updatedItem : item));
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao salvar a movimentação.");
+    }
+  };
 
   useEffect(() => {
     if (!selectedProduct || !orgId) {
@@ -380,6 +571,14 @@ export function Inventory() {
               Catálogo GLP
             </Button>
           )}
+          <Button variant="outline" size="sm" onClick={() => setIsQrModalOpen(true)} className="bg-purple-600/10 text-purple-600 hover:bg-purple-600/20 border-purple-500/20">
+            <QrCode className="h-4 w-4 mr-2" />
+            Scanner QR
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => setIsCsvModalOpen(true)} className="bg-emerald-600/10 text-emerald-600 hover:bg-emerald-600/20 border-emerald-500/20">
+            <Upload className="h-4 w-4 mr-2" />
+            Importar CSV
+          </Button>
           <Button variant="outline" size="sm" onClick={() => {
             const report = generateInventoryReport(inventory);
             sendEmailReport("", "Relatório de Estoque - TECGAS", report);
@@ -898,6 +1097,195 @@ export function Inventory() {
                   </div>
                 )}
               </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* CSV Import Modal */}
+      {isCsvModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-md shadow-xl">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-[hsl(var(--border))] px-6 py-4">
+              <CardTitle className="text-xl">Importar Itens via CSV</CardTitle>
+              <button className="p-2 rounded-full hover:bg-[hsl(var(--accent))] transition-colors" onClick={() => setIsCsvModalOpen(false)}>
+                <X className="h-5 w-5 text-[hsl(var(--muted-foreground))]" />
+              </button>
+            </CardHeader>
+            <CardContent className="p-6 space-y-4">
+              <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                Selecione um arquivo CSV com as colunas: <strong>name, category, location, qty, minQty, price</strong>.
+              </p>
+              
+              <div className="border-2 border-dashed border-[hsl(var(--border))] rounded-lg p-6 text-center cursor-pointer hover:border-[hsl(var(--primary))]/50 transition-colors relative">
+                <input 
+                  type="file" 
+                  accept=".csv" 
+                  onChange={handleCsvUpload} 
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <Upload className="h-10 w-10 mx-auto text-[hsl(var(--muted-foreground))] mb-2" />
+                <p className="text-sm font-medium">Clique ou arraste o arquivo CSV aqui</p>
+                <p className="text-xs text-[hsl(var(--muted-foreground))] mt-1">Apenas arquivos .csv</p>
+              </div>
+
+              <div className="pt-2 flex justify-between items-center">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    const csvContent = "data:text/csv;charset=utf-8,name,category,location,qty,minQty,price\nTubo Cobre 15mm,Tubulações,A1,100,50,45.0\nVálvula 1/2,Conexões,B2,45,20,35.5\n";
+                    const encodedUri = encodeURI(csvContent);
+                    const link = document.createElement("a");
+                    link.setAttribute("href", encodedUri);
+                    link.setAttribute("download", "modelo_estoque.csv");
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                >
+                  Baixar Modelo CSV
+                </Button>
+                <Button variant="ghost" onClick={() => setIsCsvModalOpen(false)}>Cancelar</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* QR Code / Barcode Scanner Modal */}
+      {isQrModalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <Card className="w-full max-w-lg shadow-xl max-h-[90vh] flex flex-col">
+            <CardHeader className="flex flex-row items-center justify-between border-b border-[hsl(var(--border))] px-6 py-4 shrink-0">
+              <CardTitle className="text-xl flex items-center gap-2">
+                <QrCode className="h-5 w-5 text-purple-500" />
+                Leitor / Scanner de QR Code
+              </CardTitle>
+              <button className="p-2 rounded-full hover:bg-[hsl(var(--accent))] transition-colors" onClick={() => setIsQrModalOpen(false)}>
+                <X className="h-5 w-5 text-[hsl(var(--muted-foreground))]" />
+              </button>
+            </CardHeader>
+            <CardContent className="p-6 overflow-y-auto space-y-4 flex-1">
+              {!qrScanResult ? (
+                <>
+                  <div className="relative bg-black rounded-lg overflow-hidden border border-purple-500/20 aspect-video flex items-center justify-center">
+                    {cameraStream ? (
+                      <video 
+                        ref={videoRef} 
+                        autoPlay 
+                        playsInline 
+                        muted 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="text-center text-[hsl(var(--muted-foreground))] p-4">
+                        <QrCode className="h-12 w-12 mx-auto mb-2 text-purple-500/50 animate-pulse" />
+                        <p className="text-sm">Buscando câmera ou usando simulador...</p>
+                      </div>
+                    )}
+                    {/* Scanning overlay frame */}
+                    <div className="absolute inset-0 pointer-events-none border-2 border-purple-500/30 m-8 rounded-lg flex items-center justify-center">
+                      <div className="w-full h-0.5 bg-purple-500 absolute top-0 animate-[bounce_2s_infinite]" />
+                    </div>
+                  </div>
+
+                  <form 
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      processQrCode(qrInput);
+                    }}
+                    className="space-y-2"
+                  >
+                    <label className="text-xs font-semibold uppercase text-[hsl(var(--muted-foreground))] tracking-wider">
+                      Leitura Manual ou Pistola de Código
+                    </label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Escaneie ou digite o SKU (ex: GLP-0001)..." 
+                        value={qrInput}
+                        onChange={(e) => setQrInput(e.target.value)}
+                        className="flex-1 h-10 px-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-sm focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
+                        autoFocus
+                      />
+                      <Button type="submit" className="bg-purple-600 hover:bg-purple-700">Buscar</Button>
+                    </div>
+                  </form>
+
+                  <div className="border-t border-[hsl(var(--border))] pt-4 space-y-2">
+                    <label className="text-xs font-semibold uppercase text-[hsl(var(--muted-foreground))] tracking-wider block">
+                      Simular Leitura
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {inventory.slice(0, 4).map(item => (
+                        <Button 
+                          key={item.id} 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => processQrCode(item.id)}
+                          className="justify-start truncate font-mono text-xs"
+                        >
+                          Scan {item.id}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4 animate-in zoom-in-95 duration-200">
+                  <div className="bg-purple-500/10 border border-purple-500/20 p-4 rounded-lg flex items-start justify-between">
+                    <div>
+                      <h4 className="font-bold text-lg">{qrScanResult.name}</h4>
+                      <p className="text-xs font-mono text-[hsl(var(--muted-foreground))] mt-0.5">{qrScanResult.id}</p>
+                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                        <span className="bg-muted px-2 py-0.5 rounded font-mono">Qtd: {qrScanResult.qty}</span>
+                        <span className="bg-muted px-2 py-0.5 rounded">Mín: {qrScanResult.minQty}</span>
+                        <span className="bg-muted px-2 py-0.5 rounded">Loc: {qrScanResult.location}</span>
+                      </div>
+                    </div>
+                    {getStatusBadge(qrScanResult.status)}
+                  </div>
+
+                  <div className="bg-[hsl(var(--muted))]/30 p-4 rounded-lg space-y-4">
+                    <h5 className="font-semibold text-sm">Registrar Movimentação Rápida</h5>
+                    <div className="flex items-center gap-3">
+                      <label className="text-sm font-medium">Quantidade:</label>
+                      <input 
+                        type="number" 
+                        min="1"
+                        value={qrQtyUpdate}
+                        onChange={(e) => setQrQtyUpdate(Math.max(1, Number(e.target.value)))}
+                        className="w-20 h-10 px-3 rounded-md border border-[hsl(var(--border))] bg-[hsl(var(--background))] text-center font-mono font-bold focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3 pt-2">
+                      <Button 
+                        onClick={() => handleQrMovement('IN')} 
+                        className="bg-emerald-600 hover:bg-emerald-700 h-11"
+                      >
+                        <ArrowDownRight className="w-4 h-4 mr-1.5" /> Registrar Entrada
+                      </Button>
+                      <Button 
+                        onClick={() => handleQrMovement('OUT')} 
+                        className="bg-amber-600 hover:bg-amber-700 h-11"
+                      >
+                        <ArrowUpRight className="w-4 h-4 mr-1.5" /> Registrar Saída
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 flex justify-between">
+                    <Button variant="outline" onClick={() => setQrScanResult(null)}>
+                      Escanear Outro
+                    </Button>
+                    <Button variant="ghost" onClick={() => setIsQrModalOpen(false)}>
+                      Fechar
+                    </Button>
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

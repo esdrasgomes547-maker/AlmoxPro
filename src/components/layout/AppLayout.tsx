@@ -43,12 +43,13 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navItems = [
     { name: "Dashboard", path: "/app/dashboard", icon: LayoutDashboard },
     { name: "Estoque", path: "/app/inventory", icon: Package },
-    { name: "Expedição", path: "/app/shipments", icon: Truck },
     { name: "Fornecedores", path: "/app/suppliers", icon: Users },
     { name: "Relatórios", path: "/app/reports", icon: FileBarChart },
-    { name: "Simulação", path: "/app/simulation", icon: Calculator },
-    { name: "Configurações", path: "/app/settings", icon: Settings },
   ];
+
+  if (isMaster) {
+    navItems.push({ name: "Painel Master", path: "/master", icon: ShieldAlert });
+  }
 
   const handleLogout = async () => {
     localStorage.removeItem('master_bypass');
@@ -209,8 +210,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             {[
               { name: "Dashboard", path: "/app/dashboard", icon: LayoutDashboard },
               { name: "Estoque", path: "/app/inventory", icon: Package },
-              { name: "Expedição", path: "/app/shipments", icon: Truck },
               { name: "Fornecedores", path: "/app/suppliers", icon: Users },
+              { name: "Relatórios", path: "/app/reports", icon: FileBarChart },
             ].map((item) => {
               const isActive = location.pathname === item.path || (item.path !== '/' && location.pathname.startsWith(item.path));
               const Icon = item.icon;
