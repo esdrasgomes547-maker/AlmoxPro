@@ -1,0 +1,9 @@
+services:
+  levthebot:
+    build: .
+    container_name: levthebot
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # sessão do WhatsApp + memória das conversas (NÃO apague, ou terá que escanear o QR de novo)
+      - ./data:/app/data
