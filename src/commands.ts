@@ -2,6 +2,7 @@ import type { WASocket } from "@whiskeysockets/baileys";
 import { jidNormalizedUser } from "@whiskeysockets/baileys";
 import { config } from "./config";
 import { isPaused, kvGet, setPaused } from "./memory/store";
+import { sendTracked } from "./whatsapp/send";
 
 function selfJid(sock: WASocket): string {
   return jidNormalizedUser(sock.user!.id);
@@ -25,7 +26,7 @@ export async function handleOwnerCommand(
   const scope = isSelfChat ? "*" : chatJid;
   const scopeLabel = isSelfChat ? "em TODAS as conversas" : "nesta conversa";
 
-  const reply = (t: string) => sock.sendMessage(chatJid, { text: t });
+  const reply = (t: string) => sendTracked(sock, chatJid, { text: t });
 
   if (cmd === "/pausar") {
     setPaused(scope, true);

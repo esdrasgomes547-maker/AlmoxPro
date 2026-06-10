@@ -8,7 +8,8 @@ Assistente pessoal de IA para o **seu WhatsApp**, com triagem inteligente de men
 |---|---|
 | 💬 Mensagens de texto | Lê, mostra "digitando…" por um tempo realista e responde com naturalidade |
 | 🧠 Triagem inteligente | **Trivial** (oi, bom dia, papo leve) → responde sozinho • **Pessoal/sério** → NÃO responde e te **alerta** no seu chat "mensagens para mim mesmo" • **Vendas/negócios/informações** → responde sozinho |
-| 🫵 Invocação `@LB` | Em **qualquer conversa**, você (e só você) digita `@LB <instrução>` e ele executa: `@LB resume essa conversa`, `@LB responde ele aí cobrando o pagamento`, `@LB manda uma imagem de bom dia` |
+| 🫵 Invocação `@LB` (estilo Meta AI) | Em **qualquer conversa**, você (e só você) digita `@LB <pergunta/instrução>` e o Lev responde **citando sua mensagem, identificado como 🤖 Lev** — igual ao @Meta AI. Ex.: `@LB resume essa conversa`, `@LB qual a capital da Austrália?` |
+| 💭 Chat direto com o Lev | O chat **"Mensagens para mim mesmo"** vira sua conversa privada com o Lev: toda mensagem sua ali ele responde, sem precisar de @LB — seu ChatGPT dentro do WhatsApp |
 | 🎙️ Áudios | Entende áudios recebidos (o Gemini "ouve" direto) e responde com **nota de voz** gerada por IA |
 | 🖼️ Imagens e vídeos | Entende fotos e vídeos recebidos e comenta/responde sobre eles |
 | 🎨 Geração de imagem | Se pedirem "manda uma imagem de X", ele gera e envia |

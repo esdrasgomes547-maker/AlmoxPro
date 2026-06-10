@@ -2,6 +2,7 @@ import type { WASocket } from "@whiskeysockets/baileys";
 import { config } from "../config";
 import { logger } from "../logger";
 import { addMessage } from "../memory/store";
+import { sendTracked } from "./send";
 
 /**
  * Ligações não podem ser atendidas por bots. Rejeitamos e respondemos
@@ -17,7 +18,7 @@ export function registerCallHandler(sock: WASocket): void {
           `Oi! Aqui é o ${config.botName}, assistente do ${config.ownerName}. ` +
           `Ele não pode atender ligação agora 📵 — me manda uma mensagem ou um áudio ` +
           `que eu já te respondo, ou aviso ele se for algo pessoal. 😉`;
-        await sock.sendMessage(call.from, { text });
+        await sendTracked(sock, call.from, { text });
         addMessage(call.from, "model", text);
         logger.info({ from: call.from }, "Ligação rejeitada com resposta automática");
       } catch (err) {

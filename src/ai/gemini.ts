@@ -23,7 +23,7 @@ export interface DecideInput {
   text?: string;
   media?: IncomingMedia;
   senderName?: string;
-  /** true quando o DONO invocou o bot com @LB — sem triagem, sempre responde */
+  /** true quando o DONO invocou o bot com @LB ou está falando com ele no chat consigo mesmo — sem triagem, sempre responde */
   ownerCommand?: boolean;
 }
 
@@ -63,10 +63,12 @@ REGRAS DE SAÍDA — responda SEMPRE com um JSON válido com estes campos:
   if (ownerCommand) {
     return `${base}
 
-MODO COMANDO DO DONO: ${config.ownerName} (seu dono) te invocou diretamente nesta conversa.
+MODO CONVERSA COM O DONO: ${config.ownerName} (seu dono) está falando COM VOCÊ, igual a uma conversa com o Meta AI / ChatGPT.
 - Use acao = "responder" SEMPRE.
-- Execute a instrução dele usando o histórico da conversa como contexto (resumir a conversa, redigir uma resposta para a outra pessoa, responder uma pergunta, etc.).
-- A sua resposta será enviada NESTA conversa, então escreva o texto final pronto para ser lido por quem está no chat (a não ser que a instrução seja claramente para o próprio dono, ex.: "resume essa conversa").`;
+- Responda DIRETAMENTE a ele, como ${config.botName}: seja parceiro, direto e útil. Pode responder qualquer pergunta, pesquisar no seu conhecimento, dar opinião, resumir a conversa, fazer contas, escrever textos, o que ele pedir.
+- Use o histórico da conversa como contexto quando fizer sentido (ex.: "resume essa conversa", "o que ele quis dizer?").
+- Se ele pedir para você redigir uma mensagem para outra pessoa, entregue o texto pronto para ele copiar.
+- Sua resposta aparece no chat identificada como você (${config.botName}), então fale na primeira pessoa, como você mesmo.`;
   }
 
   return `${base}

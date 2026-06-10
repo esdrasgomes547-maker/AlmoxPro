@@ -11,6 +11,7 @@ import { decide, type Decision, type IncomingMedia } from "../ai/gemini";
 import { synthesizeVoice } from "../ai/tts";
 import { generateImage } from "../ai/imageGen";
 import { replyDelayMs, showPresence } from "./humanizer";
+import { sendTracked, wasSentByBot } from "./send";
 import { handleOwnerCommand } from "../commands";
 
 // Processa as mensagens de cada conversa em série para não embaralhar contexto
@@ -108,47 +109,55 @@ async function alertOwner(
   ];
   if (decision.transcricao) lines.push(`🎙️ Transcrição: "${decision.transcricao}"`);
   if (decision.motivo) lines.push(`🧠 Motivo: ${decision.motivo}`);
-  await sock.sendMessage(selfJid(sock), { text: lines.join("\n") });
+  await sendTracked(sock, selfJid(sock), { text: lines.join("\n") });
 }
 
 async function sendReply(
   sock: WASocket,
   chatJid: string,
   decision: Decision,
-  asVoice: boolean
+  asVoice: boolean,
+  opts?: { prefix?: string; quoted?: WAMessage }
 ): Promise<void> {
   const text = decision.resposta?.trim();
+  const shown = text && opts?.prefix ? `${opts.prefix}${text}` : text;
+  const sendOpts = opts?.quoted ? { quoted: opts.quoted } : undefined;
 
   if (decision.imagem) {
     await showPresence(sock, chatJid, "composing", replyDelayMs(text ?? "imagem"));
     const img = await generateImage(decision.imagem);
     if (img) {
-      await sock.sendMessage(chatJid, { image: img.buffer, caption: text || undefined });
+      await sendTracked(sock, chatJid, { image: img.buffer, caption: shown || undefined }, sendOpts);
       addMessage(chatJid, "model", `${text ?? ""} [enviou imagem: ${decision.imagem}]`.trim());
       return;
     }
     // sem imagem gerada, cai para texto
   }
 
-  if (!text) return;
+  if (!shown || !text) return;
 
   if (asVoice && config.voiceReplies) {
     const voice = await synthesizeVoice(text);
     if (voice) {
       await showPresence(sock, chatJid, "recording", Math.min(voice.seconds * 300 + 1200, 6000));
-      await sock.sendMessage(chatJid, {
-        audio: voice.ogg,
-        mimetype: "audio/ogg; codecs=opus",
-        ptt: true,
-        seconds: voice.seconds,
-      });
+      await sendTracked(
+        sock,
+        chatJid,
+        {
+          audio: voice.ogg,
+          mimetype: "audio/ogg; codecs=opus",
+          ptt: true,
+          seconds: voice.seconds,
+        },
+        sendOpts
+      );
       addMessage(chatJid, "model", text);
       return;
     }
   }
 
   await showPresence(sock, chatJid, "composing", replyDelayMs(text));
-  await sock.sendMessage(chatJid, { text });
+  await sendTracked(sock, chatJid, { text: shown }, sendOpts);
   addMessage(chatJid, "model", text);
 }
 
@@ -158,6 +167,8 @@ async function handleMessage(sock: WASocket, msg: WAMessage): Promise<void> {
   if (chatJid === "status@broadcast") return;
   if (chatJid.endsWith("@newsletter") || chatJid.endsWith("@broadcast")) return;
   if (!msg.message) return;
+  // nunca reagir às mensagens que o próprio bot enviou
+  if (wasSentByBot(msg.key.id)) return;
 
   const m = unwrap(msg.message);
   if (m.protocolMessage || m.reactionMessage) return;
@@ -171,13 +182,23 @@ async function handleMessage(sock: WASocket, msg: WAMessage): Promise<void> {
   if (fromMe) {
     if (text && (await handleOwnerCommand(sock, chatJid, text))) return;
 
+    const isSelfChat = chatJid === selfJid(sock);
     const trigger = config.trigger;
-    if (text && text.trim().toLowerCase().startsWith(trigger)) {
-      const instruction = text.trim().slice(trigger.length).trim();
+    const triggered = text && text.trim().toLowerCase().startsWith(trigger);
+
+    // @LB em qualquer conversa OU qualquer mensagem no chat consigo mesmo:
+    // o Lev conversa COM VOCÊ, igual ao @Meta AI
+    if (triggered || (isSelfChat && text)) {
+      const instruction = triggered
+        ? text!.trim().slice(trigger.length).trim()
+        : text!.trim();
       if (!instruction) return;
-      const decision = await decide({ chatJid, text: instruction, ownerCommand: true });
       addMessage(chatJid, "user", `[${config.ownerName} → ${config.botName}] ${instruction}`, config.ownerName);
-      await sendReply(sock, chatJid, { ...decision, acao: "responder" }, false);
+      const decision = await decide({ chatJid, text: instruction, ownerCommand: true });
+      await sendReply(sock, chatJid, { ...decision, acao: "responder" }, false, {
+        prefix: `🤖 *${config.botName}:*\n`,
+        quoted: msg,
+      });
       return;
     }
 
